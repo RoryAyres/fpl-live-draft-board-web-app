@@ -53,7 +53,17 @@ st.markdown("""
         border-radius: 4px;
         padding: 4px;
         overflow: hidden;
+        transition: all 0.3s ease;
     }
+    /* HIGHLIGHT: On The Clock & Next Up */
+    .manager-col.is-active {
+        border: 1px solid #ff005a;
+        background-color: rgba(255, 0, 90, 0.04);
+    }
+    .manager-col.is-next {
+        border: 1px solid rgba(0, 170, 255, 0.4);
+    }
+    
     .manager-header {
         flex-shrink: 0; 
         text-align: center;
@@ -66,6 +76,9 @@ st.markdown("""
         overflow: hidden;
         text-overflow: ellipsis;
     }
+    .manager-header.is-active { border-bottom: 2px solid #ff005a; }
+    .manager-header.is-next { border-bottom: 2px solid #00aaff; }
+    
     .team-name {
         font-size: 0.6rem;
         font-weight: 400;
@@ -76,6 +89,28 @@ st.markdown("""
         overflow: hidden;
         text-overflow: ellipsis;
     }
+    
+    /* STATUS BADGES */
+    .status-badge {
+        display: block;
+        font-size: 0.55rem;
+        text-transform: uppercase;
+        font-weight: 800;
+        margin-top: 4px;
+        letter-spacing: 0.5px;
+    }
+    .status-badge.active { 
+        color: #ff005a; 
+        animation: pulse-text 1.5s infinite; 
+    }
+    .status-badge.next { color: #00aaff; }
+    
+    @keyframes pulse-text {
+        0% { opacity: 1; }
+        50% { opacity: 0.4; }
+        100% { opacity: 1; }
+    }
+    
     .pos-title {
         flex-shrink: 0;
         font-size: 0.55rem;
@@ -104,6 +139,14 @@ st.markdown("""
         text-overflow: ellipsis;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
+    
+    /* HIGHLIGHT: Latest Pick */
+    .player-card.latest-pick {
+        border: 1px solid #00ff87;
+        background-color: rgba(0, 255, 135, 0.15);
+        font-weight: 700;
+    }
+    
     .empty-card {
         background-color: transparent;
         border: 1px dashed var(--border-color);
@@ -121,8 +164,14 @@ def fetch_players_data():
         response = requests.get(game_data_url, timeout=10)
         response.raise_for_status()
         data = response.json()
-        df = pd.DataFrame(data["elements"])[["id", "web_name", "element_type"]]
-        return df
+        
+        # Extract team names and map them to the players
+        teams_dict = {t["id"]: t["short_name"] for t in data["teams"]}
+        df = pd.DataFrame(data["elements"])[["id", "web_name", "element_type", "team"]]
+        
+        # Append the team abbreviation to the player's name (e.g. "Saka (ARS)")
+        df["player_name"] = df["web_name"] + " (" + df["team"].map(teams_dict) + ")"
+        return df[["id", "player_name", "element_type"]]
     except Exception as e:
         st.error(f"⚠️ Error fetching base player data: {e}")
         return pd.DataFrame()
@@ -146,7 +195,6 @@ st.sidebar.markdown("---")
 pause_updates = st.sidebar.toggle("⏸️ Pause Live Updates", value=False)
 
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
-# NEW: Hardcoded FPL draft squad limits to ensure the board renders exactly 15 slots from the start
 ROSTER_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3} 
 
 league_name = fetch_league_name(league_id)
@@ -173,20 +221,42 @@ def render_live_draft_board():
         return
 
     choices = choices_data.get("choices", [])
-    
     if not choices:
-        st.info("🟡 Draft has not started yet. Waiting for the first pick...")
+        st.info("🟡 Draft has not started yet. Waiting for room creation...")
         return
 
     choices_df = pd.DataFrame(choices)[["entry_name", "player_first_name", "player_last_name", "element", "index", "choice_time"]]
+    choices_df["player_display"] = choices_df["player_first_name"] + " " + choices_df["player_last_name"].str[0]
 
-    if choices_df["element"].isna().all():
-        st.info("🟡 Draft room is open! Waiting for the first pick to be made...")
-        return
+    # Calculate Draft Order (Snake Draft) based on the room layout
+    num_managers = choices_df["entry_name"].nunique()
+    manager_order = choices_df.sort_values("index").head(num_managers)["entry_name"].tolist()
+    manager_names = choices_df.drop_duplicates("entry_name").set_index("entry_name")["player_display"].to_dict()
 
     made_picks_df = choices_df[choices_df["element"].notna()].copy()
     picks_made = len(made_picks_df)
     total_picks = len(choices_df)
+
+    # Calculate exactly who is on the clock and who is up next
+    on_the_clock_manager = None
+    next_up_manager = None
+
+    if picks_made < total_picks and num_managers > 0:
+        def get_manager_for_pick(pick_index):
+            round_num = pick_index // num_managers
+            pick_in_round = pick_index % num_managers
+            # Snake logic: Even rounds go 1 to N, Odd rounds go N to 1
+            idx = pick_in_round if round_num % 2 == 0 else (num_managers - 1 - pick_in_round)
+            return manager_order[idx]
+
+        on_the_clock_manager = get_manager_for_pick(picks_made)
+        if picks_made + 1 < total_picks:
+            next_up_manager = get_manager_for_pick(picks_made + 1)
+
+    # Find the single most recent pick to highlight
+    latest_pick_element = None
+    if picks_made > 0:
+        latest_pick_element = made_picks_df.sort_values("index").iloc[-1]["element"]
 
     # --- RENDER TOP METRICS & TITLE IN ONE ROW ---
     col_title, col1, col2, col3 = st.columns([1.5, 1, 1.5, 1]) 
@@ -214,33 +284,37 @@ def render_live_draft_board():
     st.markdown("<hr style='margin: 0rem 0 0.5rem 0'>", unsafe_allow_html=True) 
 
     # --- DATA PROCESSING ---
-    made_picks_df["player_display"] = made_picks_df["player_first_name"] + " " + made_picks_df["player_last_name"].str[0]
-    merged_df = made_picks_df.merge(players_df, left_on="element", right_on="id", how="left")
-    merged_df["position"] = merged_df["element_type"].map(POSITION_MAP)
-    merged_df["player_name"] = merged_df["web_name"]
-
-    first_picks = merged_df.groupby("entry_name")["index"].min().sort_values()
-    manager_order = first_picks.index.tolist()
-    
-    manager_names = (
-        made_picks_df.drop_duplicates("entry_name")
-        .set_index("entry_name")["player_display"]
-        .reindex(manager_order)
-        .fillna("Unknown")
-        .to_dict()
-    )
-    
-    merged_df = merged_df.sort_values(["element_type", "index"])
+    if not made_picks_df.empty:
+        merged_df = made_picks_df.merge(players_df, left_on="element", right_on="id", how="left")
+        merged_df["position"] = merged_df["element_type"].map(POSITION_MAP)
+    else:
+        # Empty dataframe structure if no picks are made yet
+        merged_df = pd.DataFrame(columns=["entry_name", "element", "element_type", "player_name"])
 
     # --- BUILD HTML DRAFT BOARD ---
     html_out = '<div class="draft-board-wrapper"><div class="draft-container">'
 
     for m in manager_order:
+        col_class = ""
+        header_class = ""
+        badge_html = ""
+        
+        # Apply CSS Highlights
+        if m == on_the_clock_manager:
+            col_class = "is-active"
+            header_class = "is-active"
+            badge_html = '<span class="status-badge active">▶ On The Clock</span>'
+        elif m == next_up_manager:
+            col_class = "is-next"
+            header_class = "is-next"
+            badge_html = '<span class="status-badge next">Next Up</span>'
+
         html_out += f'''
-        <div class="manager-col">
-            <div class="manager-header" title="{manager_names[m]}">
+        <div class="manager-col {col_class}">
+            <div class="manager-header {header_class}" title="{manager_names[m]}">
                 {manager_names[m]}
                 <span class="team-name" title="{m}">{m}</span>
+                {badge_html}
             </div>
         '''
         
@@ -248,14 +322,20 @@ def render_live_draft_board():
             pos_name = POSITION_MAP[pos_id]
             html_out += f'<div class="pos-title">{pos_name}</div>'
             
-            picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]["player_name"].tolist()
-            
-            # Now using the fixed 15-man structure limits instead of dynamic length checking
+            # Extract player data for this specific manager and position
+            picks_data = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)][["player_name", "element"]].to_dict('records')
             required_spots = ROSTER_LIMITS[pos_id]
             
             for i in range(required_spots):
-                if i < len(picks):
-                    html_out += f'<div class="player-card" title="{picks[i]}">{picks[i]}</div>'
+                if i < len(picks_data):
+                    p = picks_data[i]
+                    p_name = p["player_name"]
+                    
+                    # Highlight if this is the very last pick made globally
+                    is_latest = (p["element"] == latest_pick_element)
+                    latest_class = " latest-pick" if is_latest else ""
+                    
+                    html_out += f'<div class="player-card{latest_class}" title="{p_name}">{p_name}</div>'
                 else:
                     html_out += '<div class="empty-card">-</div>'
                     
