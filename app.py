@@ -6,6 +6,81 @@ from datetime import datetime, timezone, timedelta
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Live FPL Draft Board", layout="wide", page_icon="⚽")
 
+# --- CUSTOM CSS FOR DRAFT BOARD UI ---
+# We inject this CSS to override the basic table and build a responsive card grid
+st.markdown("""
+    <style>
+    .draft-board-wrapper {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 20px;
+    }
+    .draft-container {
+        display: flex;
+        gap: 10px;
+        width: 100%;
+        min-width: max-content; /* Prevents columns from squishing too small */
+    }
+    .manager-col {
+        flex: 1; /* Distributes space evenly */
+        background-color: var(--secondary-background-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 10px;
+        min-width: 140px;
+    }
+    .manager-header {
+        text-align: center;
+        font-weight: 700;
+        font-size: 1rem;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 3px solid #00ff87; /* FPL Green Accent */
+    }
+    .team-name {
+        font-size: 0.75rem;
+        font-weight: 400;
+        opacity: 0.7;
+        display: block;
+        margin-top: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .pos-title {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        opacity: 0.6;
+        margin: 12px 0 6px 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .player-card {
+        background-color: var(--background-color);
+        border: 1px solid var(--border-color);
+        padding: 6px 8px;
+        margin-bottom: 5px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .empty-card {
+        background-color: transparent;
+        border: 1px dashed var(--border-color);
+        padding: 6px 8px;
+        margin-bottom: 5px;
+        border-radius: 4px;
+        text-align: center;
+        opacity: 0.3;
+        font-size: 0.85rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- CACHED DATA FETCHING ---
 @st.cache_data(ttl=3600)
 def fetch_players_data():
@@ -83,8 +158,9 @@ def render_live_draft_board():
 
     progress_val = min(picks_made / total_picks, 1.0) if total_picks > 0 else 0.0
     st.progress(progress_val)
+    st.markdown("---")
 
-    # --- DATA PROCESSING FOR BOARD ---
+    # --- DATA PROCESSING ---
     made_picks_df["player_display"] = made_picks_df["player_first_name"] + " " + made_picks_df["player_last_name"].str[0]
     merged_df = made_picks_df.merge(players_df, left_on="element", right_on="id", how="left")
     merged_df["position"] = merged_df["element_type"].map(POSITION_MAP)
@@ -100,31 +176,44 @@ def render_live_draft_board():
         .fillna("Unknown")
         .to_dict()
     )
-
-    column_headers = [f"{manager_names[m]}\n({m})" for m in manager_order]
-    merged_df = merged_df.sort_values(["element_type", "index"])
-    board_data = []
-
-    for pos_id in [1, 2, 3, 4]:
-        pos_name = POSITION_MAP[pos_id]
-        board_data.append({header: f"— {pos_name.upper()} —" for header in manager_order})
-        
-        grouped_pos = merged_df[merged_df["element_type"] == pos_id].groupby("entry_name")["player_name"].apply(list).to_dict()
-        max_roster_spots = max([len(grouped_pos.get(m, [])) for m in manager_order], default=0)
-        
-        for i in range(max_roster_spots):
-            row_dict = {}
-            for m in manager_order:
-                picks = grouped_pos.get(m, [])
-                row_dict[m] = picks[i] if i < len(picks) else ""
-            board_data.append(row_dict)
-            
-        board_data.append({header: "" for header in manager_order})
-
-    display_df = pd.DataFrame(board_data)
-    display_df.columns = column_headers
     
-    st.dataframe(display_df, use_container_width=True, hide_index=True, height=650)
+    merged_df = merged_df.sort_values(["element_type", "index"])
+
+    # --- BUILD HTML DRAFT BOARD ---
+    html_out = '<div class="draft-board-wrapper"><div class="draft-container">'
+
+    for m in manager_order:
+        html_out += f'''
+        <div class="manager-col">
+            <div class="manager-header">
+                {manager_names[m]}
+                <span class="team-name">{m}</span>
+            </div>
+        '''
+        
+        for pos_id in [1, 2, 3, 4]:
+            pos_name = POSITION_MAP[pos_id]
+            html_out += f'<div class="pos-title">{pos_name}</div>'
+            
+            # Extract player picks for this specific manager and position
+            picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]["player_name"].tolist()
+            
+            # Determine maximum slots needed for this position across ALL managers to keep cards aligned
+            max_roster_spots = max([len(merged_df[(merged_df["entry_name"] == mgr) & (merged_df["element_type"] == pos_id)]) for mgr in manager_order], default=0)
+            
+            for i in range(max_roster_spots):
+                if i < len(picks):
+                    html_out += f'<div class="player-card">{picks[i]}</div>'
+                else:
+                    # Renders a dashed placeholder if waiting for a pick in this block
+                    html_out += '<div class="empty-card">-</div>'
+                    
+        html_out += '</div>' # Closes manager column
+
+    html_out += '</div></div>'
+
+    # Render the custom HTML grid to the screen
+    st.markdown(html_out, unsafe_allow_html=True)
 
 # --- INITIALIZE ---
 render_live_draft_board()
