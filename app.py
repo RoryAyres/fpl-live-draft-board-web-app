@@ -321,6 +321,7 @@ def render_live_draft_board():
 
     html_out += '</div></div>'
 
+    # RESTORED: unsafe_allow_html=True added back so HTML renders correctly
     st.markdown(html_out, unsafe_allow_html=True)
 
 # --- INITIALIZE ---
