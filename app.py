@@ -9,6 +9,7 @@ st.set_page_config(page_title="Live FPL Draft Board", layout="wide", page_icon="
 # --- CUSTOM CSS FOR "ZOOM BROADCAST" UI ---
 st.markdown("""
     <style>
+    /* 1. REMOVE PADDING BUT KEEP THE SIDEBAR TOGGLE VISIBLE */
     .block-container {
         padding-top: 3rem !important; 
         padding-bottom: 0rem !important;
@@ -19,6 +20,7 @@ st.markdown("""
     #MainMenu {visibility: hidden;} 
     footer {visibility: hidden;}
     
+    /* 2. COMPACT TOP METRICS & TITLE */
     [data-testid="stMetricValue"] {
         font-size: 1.4rem !important;
     }
@@ -31,6 +33,7 @@ st.markdown("""
         padding-bottom: 0px !important;
     }
     
+    /* 3. RESPONSIVE, SHRINK-TO-FIT GRID */
     .draft-board-wrapper {
         width: 100%;
         overflow: hidden; 
@@ -52,6 +55,7 @@ st.markdown("""
         overflow: hidden;
         transition: all 0.3s ease;
     }
+    /* HIGHLIGHT: On The Clock & Next Up */
     .manager-col.is-active {
         border: 1px solid #ff005a;
         background-color: rgba(255, 0, 90, 0.04);
@@ -86,6 +90,7 @@ st.markdown("""
         text-overflow: ellipsis;
     }
     
+    /* STATUS BADGES */
     .status-badge {
         display: block;
         font-size: 0.55rem;
@@ -117,6 +122,7 @@ st.markdown("""
         text-align: center;
     }
     
+    /* 4. STRETCHY PLAYER CARDS */
     .player-card, .empty-card {
         flex: 1 1 0; 
         display: flex;
@@ -134,6 +140,7 @@ st.markdown("""
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
     
+    /* HIGHLIGHT: Latest Pick */
     .player-card.latest-pick {
         border: 1px solid #00ff87;
         background-color: rgba(0, 255, 135, 0.15);
@@ -157,8 +164,12 @@ def fetch_players_data():
         response = requests.get(game_data_url, timeout=10)
         response.raise_for_status()
         data = response.json()
+        
+        # Extract team names and map them to the players
         teams_dict = {t["id"]: t["short_name"] for t in data["teams"]}
         df = pd.DataFrame(data["elements"])[["id", "web_name", "element_type", "team"]]
+        
+        # Append the team abbreviation to the player's name (e.g. "Saka (ARS)")
         df["player_name"] = df["web_name"] + " (" + df["team"].map(teams_dict) + ")"
         return df[["id", "player_name", "element_type"]]
     except Exception as e:
@@ -217,6 +228,7 @@ def render_live_draft_board():
     choices_df = pd.DataFrame(choices)[["entry_name", "player_first_name", "player_last_name", "element", "index", "choice_time"]]
     choices_df["player_display"] = choices_df["player_first_name"] + " " + choices_df["player_last_name"].str[0]
 
+    # Calculate Draft Order (Snake Draft) based on the room layout
     num_managers = choices_df["entry_name"].nunique()
     manager_order = choices_df.sort_values("index").head(num_managers)["entry_name"].tolist()
     manager_names = choices_df.drop_duplicates("entry_name").set_index("entry_name")["player_display"].to_dict()
@@ -225,6 +237,7 @@ def render_live_draft_board():
     picks_made = len(made_picks_df)
     total_picks = len(choices_df)
 
+    # Calculate exactly who is on the clock and who is up next
     on_the_clock_manager = None
     next_up_manager = None
 
@@ -232,6 +245,7 @@ def render_live_draft_board():
         def get_manager_for_pick(pick_index):
             round_num = pick_index // num_managers
             pick_in_round = pick_index % num_managers
+            # Snake logic: Even rounds go 1 to N, Odd rounds go N to 1
             idx = pick_in_round if round_num % 2 == 0 else (num_managers - 1 - pick_in_round)
             return manager_order[idx]
 
@@ -239,6 +253,7 @@ def render_live_draft_board():
         if picks_made + 1 < total_picks:
             next_up_manager = get_manager_for_pick(picks_made + 1)
 
+    # Find the single most recent pick to highlight
     latest_pick_element = None
     if picks_made > 0:
         latest_pick_element = made_picks_df.sort_values("index").iloc[-1]["element"]
@@ -268,10 +283,12 @@ def render_live_draft_board():
 
     st.markdown("<hr style='margin: 0rem 0 0.5rem 0'>", unsafe_allow_html=True) 
 
+    # --- DATA PROCESSING ---
     if not made_picks_df.empty:
         merged_df = made_picks_df.merge(players_df, left_on="element", right_on="id", how="left")
         merged_df["position"] = merged_df["element_type"].map(POSITION_MAP)
     else:
+        # Empty dataframe structure if no picks are made yet
         merged_df = pd.DataFrame(columns=["entry_name", "element", "element_type", "player_name"])
 
     # --- BUILD HTML DRAFT BOARD ---
@@ -282,6 +299,7 @@ def render_live_draft_board():
         header_class = ""
         badge_html = ""
         
+        # Apply CSS Highlights
         if m == on_the_clock_manager:
             col_class = "is-active"
             header_class = "is-active"
@@ -304,6 +322,7 @@ def render_live_draft_board():
             pos_name = POSITION_MAP[pos_id]
             html_out += f'<div class="pos-title">{pos_name}</div>'
             
+            # Extract player data for this specific manager and position
             picks_data = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)][["player_name", "element"]].to_dict('records')
             required_spots = ROSTER_LIMITS[pos_id]
             
@@ -311,13 +330,16 @@ def render_live_draft_board():
                 if i < len(picks_data):
                     p = picks_data[i]
                     p_name = p["player_name"]
+                    
+                    # Highlight if this is the very last pick made globally
                     is_latest = (p["element"] == latest_pick_element)
                     latest_class = " latest-pick" if is_latest else ""
+                    
                     html_out += f'<div class="player-card{latest_class}" title="{p_name}">{p_name}</div>'
                 else:
                     html_out += '<div class="empty-card">-</div>'
                     
-        html_out += '</div>'
+        html_out += '</div>' 
 
     html_out += '</div></div>'
 
