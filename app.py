@@ -11,7 +11,7 @@ st.markdown("""
     <style>
     /* 1. REMOVE PADDING BUT KEEP THE SIDEBAR TOGGLE VISIBLE */
     .block-container {
-        padding-top: 2.5rem !important; 
+        padding-top: 3rem !important; /* Increased to stop the ball emoji from cropping */
         padding-bottom: 0rem !important;
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
@@ -28,7 +28,8 @@ st.markdown("""
         font-size: 0.75rem !important;
     }
     h3 {
-        margin-top: -15px !important;
+        margin-top: 0px !important; /* Removed negative margin causing cropping */
+        margin-bottom: 0px !important;
         padding-bottom: 0px !important;
     }
     
@@ -41,8 +42,8 @@ st.markdown("""
         display: flex;
         gap: 4px; 
         width: 100%;
-        /* Dynamically calculates height: Full Screen MINUS headers and bottom button space */
-        height: calc(100vh - 180px); 
+        /* Adjusted dynamically to account for the new padding and bottom button */
+        height: calc(100vh - 200px); 
     }
     .manager-col {
         flex: 1 1 0; 
@@ -127,15 +128,35 @@ def fetch_players_data():
         st.error(f"⚠️ Error fetching base player data: {e}")
         return pd.DataFrame()
 
+@st.cache_data(ttl=3600)
+def fetch_league_name(league_id):
+    league_details_url = f"https://draft.premierleague.com/api/league/{league_id}/details"
+    try:
+        response = requests.get(league_details_url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("league", {}).get("name", f"League {league_id}")
+    except Exception:
+        return f"League {league_id}"
+
 # --- UI LAYOUT & SIDEBAR ---
 st.sidebar.header("⚙️ Draft Settings")
 league_id = st.sidebar.number_input("League ID", min_value=1, value=217, step=1)
 refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, max_value=30, value=5)
+st.sidebar.markdown("---")
+# New toggle to control auto-refreshing
+pause_updates = st.sidebar.toggle("⏸️ Pause Live Updates", value=False)
 
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
 
+# We fetch the league name outside the loop so it can be passed into the title
+league_name = fetch_league_name(league_id)
+
+# If pause_updates is True, run_every is set to None, effectively halting the loop
+refresh_timer = None if pause_updates else timedelta(seconds=refresh_seconds)
+
 # --- AUTO-REFRESHING LIVE COMPONENT ---
-@st.fragment(run_every=timedelta(seconds=refresh_seconds))
+@st.fragment(run_every=refresh_timer)
 def render_live_draft_board():
     players_df = fetch_players_data()
     if players_df.empty:
@@ -171,17 +192,19 @@ def render_live_draft_board():
     total_picks = len(choices_df)
 
     # --- RENDER TOP METRICS & TITLE IN ONE ROW ---
-    # Squeezing the title next to the metrics to save vertical real estate
     col_title, col1, col2, col3 = st.columns([1.5, 1, 1.5, 1]) 
     
     with col_title:
-        st.markdown("### ⚽ Live FPL Draft") 
+        # Dynamically inject the league name into the title
+        st.markdown(f"### ⚽ {league_name}") 
 
     with col1:
         st.metric("Total Picks", f"{picks_made} / {total_picks}")
     
     with col2:
-        if picks_made == total_picks:
+        if pause_updates:
+            st.warning("⏸️ Updates Paused")
+        elif picks_made == total_picks:
             st.success("✅ Draft Complete!")
         else:
             st.write("🚧 **Draft In Progress**")
