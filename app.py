@@ -4,22 +4,20 @@ import requests
 from datetime import datetime, timezone, timedelta
 
 # --- PAGE CONFIGURATION ---
-# Added initial_sidebar_state="collapsed" to maximize space for the Zoom call
 st.set_page_config(page_title="Live FPL Draft Board", layout="wide", page_icon="⚽", initial_sidebar_state="collapsed")
 
 # --- CUSTOM CSS FOR "ZOOM BROADCAST" UI ---
 st.markdown("""
     <style>
-    /* 1. AGGRESSIVELY REMOVE STREAMLIT PADDING & MENUS */
+    /* 1. REMOVE PADDING BUT KEEP THE SIDEBAR TOGGLE VISIBLE */
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 2rem !important; /* Slightly increased so it doesn't overlap the sidebar button */
         padding-bottom: 0rem !important;
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
         max-width: 100% !important;
     }
-    header {visibility: hidden;} /* Hides the top right menu / deploy button */
-    #MainMenu {visibility: hidden;}
+    #MainMenu {visibility: hidden;} /* Hides the top right menu */
     footer {visibility: hidden;}
     
     /* 2. COMPACT TOP METRICS */
@@ -30,18 +28,21 @@ st.markdown("""
         font-size: 0.8rem !important;
     }
     
-    /* 3. RESPONSIVE, SHRINK-TO-FIT GRID */
+    /* 3. RESPONSIVE, SHRINK-TO-FIT GRID (HORIZONTAL & VERTICAL) */
     .draft-board-wrapper {
         width: 100%;
-        overflow: hidden; /* Disables scrollbars */
+        overflow: hidden; 
     }
     .draft-container {
         display: flex;
-        gap: 4px; /* Very tight spacing between columns */
+        gap: 4px; 
         width: 100%;
+        height: 82vh; /* Tells the board to stretch to 82% of the browser window's height */
     }
     .manager-col {
-        flex: 1 1 0; /* Forces columns to distribute space equally and shrink to fit */
+        flex: 1 1 0; 
+        display: flex;
+        flex-direction: column; /* Aligns children vertically */
         background-color: var(--secondary-background-color);
         border: 1px solid var(--border-color);
         border-radius: 4px;
@@ -49,9 +50,10 @@ st.markdown("""
         overflow: hidden;
     }
     .manager-header {
+        flex-shrink: 0; /* Prevents header from squishing */
         text-align: center;
         font-weight: 700;
-        font-size: 0.8rem; /* Smaller header */
+        font-size: 0.8rem;
         margin-bottom: 4px;
         padding-bottom: 4px;
         border-bottom: 2px solid #00ff87; 
@@ -70,23 +72,27 @@ st.markdown("""
         text-overflow: ellipsis;
     }
     .pos-title {
+        flex-shrink: 0;
         font-size: 0.55rem;
         text-transform: uppercase;
         letter-spacing: 0.5px;
         opacity: 0.6;
-        margin: 6px 0 2px 0;
+        margin: 4px 0 2px 0;
         border-bottom: 1px solid var(--border-color);
         text-align: center;
     }
     
-    /* 4. COMPACT PLAYER CARDS */
-    .player-card {
+    /* 4. STRETCHY PLAYER CARDS */
+    .player-card, .empty-card {
+        flex: 1 1 0; /* This tells the cards to stretch evenly to fill the vertical space */
+        display: flex;
+        align-items: center; /* Centers the text vertically inside the stretched card */
         background-color: var(--background-color);
         border: 1px solid var(--border-color);
-        padding: 2px 4px; /* Minimal padding */
+        padding: 0 4px; 
         margin-bottom: 3px;
         border-radius: 3px;
-        font-size: 0.7rem; /* Smaller font to fit long names */
+        font-size: 0.75rem; 
         font-weight: 500;
         white-space: nowrap;
         overflow: hidden;
@@ -96,12 +102,8 @@ st.markdown("""
     .empty-card {
         background-color: transparent;
         border: 1px dashed var(--border-color);
-        padding: 2px 4px;
-        margin-bottom: 3px;
-        border-radius: 3px;
-        text-align: center;
+        justify-content: center;
         opacity: 0.3;
-        font-size: 0.7rem;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -125,7 +127,6 @@ st.sidebar.header("⚙️ Draft Settings")
 league_id = st.sidebar.number_input("League ID", min_value=1, value=217, step=1)
 refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, max_value=30, value=5)
 
-# Reduced title size to save vertical space
 st.markdown("### ⚽ Live FPL Draft Board") 
 
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
@@ -167,7 +168,7 @@ def render_live_draft_board():
     total_picks = len(choices_df)
 
     # --- RENDER TOP METRICS ---
-    col1, col2, col3 = st.columns([1, 2, 1]) # Adjusted column ratios to squeeze the middle
+    col1, col2, col3 = st.columns([1, 2, 1]) 
     
     with col1:
         st.metric("Total Picks", f"{picks_made} / {total_picks}")
@@ -176,7 +177,6 @@ def render_live_draft_board():
         if picks_made == total_picks:
             st.success("✅ Draft Complete!")
         else:
-            # Replaced info box with plain text and a progress bar to save vertical height
             st.write("🚧 **Draft In Progress**")
             progress_val = min(picks_made / total_picks, 1.0) if total_picks > 0 else 0.0
             st.progress(progress_val)
@@ -185,7 +185,7 @@ def render_live_draft_board():
         now_bst = datetime.now(timezone.utc) + timedelta(hours=1)
         st.metric("Last Synced", now_bst.strftime("%H:%M:%S BST"))
 
-    st.markdown("<hr style='margin: 0.5rem 0'>", unsafe_allow_html=True) # Tighter horizontal rule
+    st.markdown("<hr style='margin: 0.5rem 0'>", unsafe_allow_html=True) 
 
     # --- DATA PROCESSING ---
     made_picks_df["player_display"] = made_picks_df["player_first_name"] + " " + made_picks_df["player_last_name"].str[0]
@@ -227,7 +227,6 @@ def render_live_draft_board():
             
             for i in range(max_roster_spots):
                 if i < len(picks):
-                    # Added 'title' attribute so hovering over a cut-off name shows the full name natively
                     html_out += f'<div class="player-card" title="{picks[i]}">{picks[i]}</div>'
                 else:
                     html_out += '<div class="empty-card">-</div>'
