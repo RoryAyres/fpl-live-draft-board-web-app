@@ -11,7 +11,7 @@ st.markdown("""
     <style>
     /* 1. REMOVE PADDING BUT KEEP THE SIDEBAR TOGGLE VISIBLE */
     .block-container {
-        padding-top: 3rem !important; /* Increased to stop the ball emoji from cropping */
+        padding-top: 3rem !important; 
         padding-bottom: 0rem !important;
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
@@ -28,7 +28,7 @@ st.markdown("""
         font-size: 0.75rem !important;
     }
     h3 {
-        margin-top: 0px !important; /* Removed negative margin causing cropping */
+        margin-top: 0px !important; 
         margin-bottom: 0px !important;
         padding-bottom: 0px !important;
     }
@@ -42,7 +42,6 @@ st.markdown("""
         display: flex;
         gap: 4px; 
         width: 100%;
-        /* Adjusted dynamically to account for the new padding and bottom button */
         height: calc(100vh - 200px); 
     }
     .manager-col {
@@ -144,15 +143,13 @@ st.sidebar.header("⚙️ Draft Settings")
 league_id = st.sidebar.number_input("League ID", min_value=1, value=217, step=1)
 refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, max_value=30, value=5)
 st.sidebar.markdown("---")
-# New toggle to control auto-refreshing
 pause_updates = st.sidebar.toggle("⏸️ Pause Live Updates", value=False)
 
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
+# NEW: Hardcoded FPL draft squad limits to ensure the board renders exactly 15 slots from the start
+ROSTER_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3} 
 
-# We fetch the league name outside the loop so it can be passed into the title
 league_name = fetch_league_name(league_id)
-
-# If pause_updates is True, run_every is set to None, effectively halting the loop
 refresh_timer = None if pause_updates else timedelta(seconds=refresh_seconds)
 
 # --- AUTO-REFRESHING LIVE COMPONENT ---
@@ -195,7 +192,6 @@ def render_live_draft_board():
     col_title, col1, col2, col3 = st.columns([1.5, 1, 1.5, 1]) 
     
     with col_title:
-        # Dynamically inject the league name into the title
         st.markdown(f"### ⚽ {league_name}") 
 
     with col1:
@@ -253,9 +249,11 @@ def render_live_draft_board():
             html_out += f'<div class="pos-title">{pos_name}</div>'
             
             picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]["player_name"].tolist()
-            max_roster_spots = max([len(merged_df[(merged_df["entry_name"] == mgr) & (merged_df["element_type"] == pos_id)]) for mgr in manager_order], default=0)
             
-            for i in range(max_roster_spots):
+            # Now using the fixed 15-man structure limits instead of dynamic length checking
+            required_spots = ROSTER_LIMITS[pos_id]
+            
+            for i in range(required_spots):
                 if i < len(picks):
                     html_out += f'<div class="player-card" title="{picks[i]}">{picks[i]}</div>'
                 else:
