@@ -11,24 +11,28 @@ st.markdown("""
     <style>
     /* 1. REMOVE PADDING BUT KEEP THE SIDEBAR TOGGLE VISIBLE */
     .block-container {
-        padding-top: 2rem !important; /* Slightly increased so it doesn't overlap the sidebar button */
+        padding-top: 2.5rem !important; 
         padding-bottom: 0rem !important;
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
         max-width: 100% !important;
     }
-    #MainMenu {visibility: hidden;} /* Hides the top right menu */
+    #MainMenu {visibility: hidden;} 
     footer {visibility: hidden;}
     
-    /* 2. COMPACT TOP METRICS */
+    /* 2. COMPACT TOP METRICS & TITLE */
     [data-testid="stMetricValue"] {
-        font-size: 1.5rem !important;
+        font-size: 1.4rem !important;
     }
     [data-testid="stMetricLabel"] {
-        font-size: 0.8rem !important;
+        font-size: 0.75rem !important;
+    }
+    h3 {
+        margin-top: -15px !important;
+        padding-bottom: 0px !important;
     }
     
-    /* 3. RESPONSIVE, SHRINK-TO-FIT GRID (HORIZONTAL & VERTICAL) */
+    /* 3. RESPONSIVE, SHRINK-TO-FIT GRID */
     .draft-board-wrapper {
         width: 100%;
         overflow: hidden; 
@@ -37,12 +41,13 @@ st.markdown("""
         display: flex;
         gap: 4px; 
         width: 100%;
-        height: 82vh; /* Tells the board to stretch to 82% of the browser window's height */
+        /* Dynamically calculates height: Full Screen MINUS headers and bottom button space */
+        height: calc(100vh - 180px); 
     }
     .manager-col {
         flex: 1 1 0; 
         display: flex;
-        flex-direction: column; /* Aligns children vertically */
+        flex-direction: column; 
         background-color: var(--secondary-background-color);
         border: 1px solid var(--border-color);
         border-radius: 4px;
@@ -50,7 +55,7 @@ st.markdown("""
         overflow: hidden;
     }
     .manager-header {
-        flex-shrink: 0; /* Prevents header from squishing */
+        flex-shrink: 0; 
         text-align: center;
         font-weight: 700;
         font-size: 0.8rem;
@@ -84,9 +89,9 @@ st.markdown("""
     
     /* 4. STRETCHY PLAYER CARDS */
     .player-card, .empty-card {
-        flex: 1 1 0; /* This tells the cards to stretch evenly to fill the vertical space */
+        flex: 1 1 0; 
         display: flex;
-        align-items: center; /* Centers the text vertically inside the stretched card */
+        align-items: center; 
         background-color: var(--background-color);
         border: 1px solid var(--border-color);
         padding: 0 4px; 
@@ -127,8 +132,6 @@ st.sidebar.header("⚙️ Draft Settings")
 league_id = st.sidebar.number_input("League ID", min_value=1, value=217, step=1)
 refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, max_value=30, value=5)
 
-st.markdown("### ⚽ Live FPL Draft Board") 
-
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
 
 # --- AUTO-REFRESHING LIVE COMPONENT ---
@@ -167,9 +170,13 @@ def render_live_draft_board():
     picks_made = len(made_picks_df)
     total_picks = len(choices_df)
 
-    # --- RENDER TOP METRICS ---
-    col1, col2, col3 = st.columns([1, 2, 1]) 
+    # --- RENDER TOP METRICS & TITLE IN ONE ROW ---
+    # Squeezing the title next to the metrics to save vertical real estate
+    col_title, col1, col2, col3 = st.columns([1.5, 1, 1.5, 1]) 
     
+    with col_title:
+        st.markdown("### ⚽ Live FPL Draft") 
+
     with col1:
         st.metric("Total Picks", f"{picks_made} / {total_picks}")
     
@@ -185,7 +192,7 @@ def render_live_draft_board():
         now_bst = datetime.now(timezone.utc) + timedelta(hours=1)
         st.metric("Last Synced", now_bst.strftime("%H:%M:%S BST"))
 
-    st.markdown("<hr style='margin: 0.5rem 0'>", unsafe_allow_html=True) 
+    st.markdown("<hr style='margin: 0rem 0 0.5rem 0'>", unsafe_allow_html=True) 
 
     # --- DATA PROCESSING ---
     made_picks_df["player_display"] = made_picks_df["player_first_name"] + " " + made_picks_df["player_last_name"].str[0]
