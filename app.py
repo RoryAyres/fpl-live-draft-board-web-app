@@ -43,7 +43,6 @@ st.markdown("""
         border: 1px solid var(--border-color); border-radius: 4px; padding: 4px; overflow: hidden;
     }
     
-    /* Updated Header styling to support dropdowns */
     .manager-header {
         flex-shrink: 0; text-align: center; font-weight: 700; font-size: 0.8rem;
         margin-bottom: 4px; padding-bottom: 4px; border-bottom: 2px solid #00ff87; 
@@ -56,21 +55,15 @@ st.markdown("""
         margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     
-    /* Stats Dropdown UI */
-    .stats-expander {
-        margin-top: 6px; font-size: 0.65rem; font-weight: normal;
-        background-color: var(--background-color); border: 1px solid var(--border-color);
-        border-radius: 4px; padding: 2px 4px; text-align: left;
+    /* NEW: Post-Draft Stat Blocks */
+    .manager-stats-top {
+        display: flex; justify-content: space-between; font-size: 0.55rem; 
+        font-weight: normal; opacity: 0.8; margin-top: 6px; padding-top: 4px; 
+        border-top: 1px dotted var(--border-color);
     }
-    .stats-expander summary {
-        cursor: pointer; text-align: center; font-weight: 600; 
-        list-style: none; padding: 2px 0; opacity: 0.8;
-    }
-    .stats-expander summary:hover { opacity: 1; }
-    .stats-expander summary::-webkit-details-marker { display: none; }
-    .stats-content {
-        padding: 4px 2px; border-top: 1px dashed var(--border-color); 
-        margin-top: 2px; line-height: 1.4;
+    .manager-stats-bottom {
+        flex-shrink: 0; text-align: center; font-size: 0.7rem; font-weight: 700;
+        margin-top: auto; padding-top: 4px; border-top: 2px solid #00ff87;
     }
     
     .pos-title {
@@ -286,7 +279,7 @@ def render_live_draft_board():
 
         merged_df = merged_df.sort_values(["element_type", "index"])
 
-        # BUILD HTML (No leading spaces inside strings to prevent Markdown parsing)
+        # BUILD HTML
         html_out = '<div class="draft-board-wrapper"><div class="draft-container">'
 
         for m in manager_order:
@@ -295,16 +288,13 @@ def render_live_draft_board():
             html_out += f'<div class="manager-title-wrap">{manager_names[m]}</div>'
             html_out += f'<span class="team-name" title="{m}">{m}</span>'
             
+            # Inject top stats if draft is completed
             if m in manager_stats:
                 stats = manager_stats[m]
-                html_out += f'<details class="stats-expander">'
-                html_out += f'<summary>📊 Stats</summary>'
-                html_out += f'<div class="stats-content">'
-                html_out += f'<b>Value:</b> {stats["value"]}<br>'
-                html_out += f'<b>Total Time:</b> {stats["total"]}<br>'
-                html_out += f'<b>Avg Pick:</b> {stats["avg"]}'
+                html_out += f'<div class="manager-stats-top">'
+                html_out += f'<span title="Total Picking Time">⏱️ {stats["total"]}</span>'
+                html_out += f'<span title="Average Time per Pick">⏳ {stats["avg"]}</span>'
                 html_out += f'</div>'
-                html_out += f'</details>'
 
             html_out += '</div>'
             
@@ -324,6 +314,11 @@ def render_live_draft_board():
                         html_out += f'<div class="player-card {pos_css_class}" title="{picks_hover[i]}">{picks_formatted[i]}</div>'
                     else:
                         html_out += '<div class="empty-card">-</div>'
+            
+            # Inject bottom stats if draft is completed
+            if m in manager_stats:
+                stats = manager_stats[m]
+                html_out += f'<div class="manager-stats-bottom" title="Total Squad Value">💷 {stats["value"]}</div>'
                         
             html_out += '</div>' 
         html_out += '</div></div>'
