@@ -220,7 +220,12 @@ def render_live_draft_board():
         st.info("🟡 Draft room is open! Waiting for the first pick to be made...")
         return
 
-    choices_df = pd.DataFrame(choices)[["entry_name", "player_first_name", "player_last_name", "element", "index", "choice_time"]]
+    # Safely load the choices, ensuring 'was_auto' exists even if the API acts unexpectedly
+    choices_df_raw = pd.DataFrame(choices)
+    if "was_auto" not in choices_df_raw.columns:
+        choices_df_raw["was_auto"] = False
+        
+    choices_df = choices_df_raw[["entry_name", "player_first_name", "player_last_name", "element", "index", "choice_time", "was_auto"]]
     made_picks_df = choices_df[choices_df["element"].notna()].copy()
     
     current_picks_made = len(made_picks_df)
@@ -270,11 +275,13 @@ def render_live_draft_board():
                 total_time = mgr_data["time_taken"].sum()
                 avg_time = mgr_data["time_taken"].mean()
                 total_value = mgr_data["cost_mil"].sum()
+                auto_picks = mgr_data["was_auto"].sum() # True evaluates to 1, False to 0
                 
                 manager_stats[m] = {
                     "value": f"£{total_value:.1f}m" if total_value > 0 else "N/A",
                     "total": format_time(total_time),
-                    "avg": format_time(avg_time)
+                    "avg": format_time(avg_time),
+                    "auto": int(auto_picks)
                 }
 
         merged_df = merged_df.sort_values(["element_type", "index"])
@@ -293,6 +300,7 @@ def render_live_draft_board():
                 stats = manager_stats[m]
                 html_out += f'<div class="manager-stats-top">'
                 html_out += f'<span title="Total Picking Time">⏱️ {stats["total"]}</span>'
+                html_out += f'<span title="Number of Autopicks">🤖 {stats["auto"]}</span>'
                 html_out += f'<span title="Average Time per Pick">⏳ {stats["avg"]}</span>'
                 html_out += f'</div>'
 
