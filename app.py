@@ -6,10 +6,17 @@ from datetime import datetime, timezone, timedelta
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Live FPL Draft Board", layout="wide", page_icon="⚽", initial_sidebar_state="collapsed")
 
+# --- INITIALIZE SESSION STATE ---
+if "picks_made" not in st.session_state:
+    st.session_state.picks_made = 0
+    st.session_state.total_picks = 0
+    st.session_state.board_html = ""
+if "pause_updates" not in st.session_state:
+    st.session_state.pause_updates = False
+
 # --- CUSTOM CSS FOR "ZOOM BROADCAST" UI ---
 st.markdown("""
     <style>
-    /* 1. REMOVE PADDING BUT KEEP THE SIDEBAR TOGGLE VISIBLE */
     .block-container {
         padding-top: 3rem !important; 
         padding-bottom: 0rem !important;
@@ -20,7 +27,6 @@ st.markdown("""
     #MainMenu {visibility: hidden;} 
     footer {visibility: hidden;}
     
-    /* 2. COMPACT TOP METRICS & TITLE */
     [data-testid="stMetricValue"] {
         font-size: 1.4rem !important;
     }
@@ -33,7 +39,6 @@ st.markdown("""
         padding-bottom: 0px !important;
     }
     
-    /* 3. RESPONSIVE, SHRINK-TO-FIT GRID */
     .draft-board-wrapper {
         width: 100%;
         overflow: hidden; 
@@ -87,7 +92,6 @@ st.markdown("""
         text-align: center;
     }
     
-    /* 4. STRETCHY PLAYER CARDS */
     .player-card, .empty-card {
         flex: 1 1 0; 
         display: flex;
@@ -149,37 +153,43 @@ def fetch_league_name(league_id):
 st.sidebar.header("⚙️ Draft Settings")
 league_id = st.sidebar.number_input("League ID", min_value=1, value=217, step=1)
 refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, max_value=30, value=5)
+
 st.sidebar.markdown("---")
-pause_updates = st.sidebar.toggle("⏸️ Pause Live Updates", value=False)
+
+# The toggle is now permanently tied to our session_state variable
+st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
+
+if st.sidebar.button("🔄 Manual Refresh", use_container_width=True):
+    # Triggers a manual redraw by making the app forget the current pick count
+    st.session_state.picks_made = -1 
+    st.cache_data.clear() # Clears background caches for a pristine fetch
 
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
 ROSTER_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3} 
 
 league_name = fetch_league_name(league_id)
-refresh_timer = None if pause_updates else timedelta(seconds=refresh_seconds)
+
+# Dynamically set the timer. If paused, it evaluates to None and the background loop completely stops
+refresh_timer = None if st.session_state.pause_updates else timedelta(seconds=refresh_seconds)
 
 # --- AUTO-REFRESHING LIVE COMPONENT ---
 @st.fragment(run_every=refresh_timer)
 def render_live_draft_board():
-    
-    # 1. Initialize session state to enable Smart Rendering & Fallbacks
-    if "picks_made" not in st.session_state:
-        st.session_state.picks_made = 0
-        st.session_state.total_picks = 0
-        st.session_state.board_html = ""
         
-    # Helper function to draw the UI using session state variables
     def draw_board_ui():
         col_title, col1, col2, col3 = st.columns([1.5, 1, 1.5, 1]) 
         with col_title:
             st.markdown(f"### ⚽ {league_name}") 
 
         with col1:
-            st.metric("Total Picks", f"{st.session_state.picks_made} / {st.session_state.total_picks}")
+            st.metric("Total Picks", f"{max(0, st.session_state.picks_made)} / {st.session_state.total_picks}")
         
         with col2:
-            if pause_updates:
-                st.warning("⏸️ Updates Paused")
+            if st.session_state.pause_updates:
+                if st.session_state.total_picks > 0 and st.session_state.picks_made == st.session_state.total_picks:
+                    st.success("✅ Draft Complete! (Updates Paused)")
+                else:
+                    st.warning("⏸️ Updates Paused")
             elif st.session_state.total_picks > 0 and st.session_state.picks_made == st.session_state.total_picks:
                 st.success("✅ Draft Complete!")
             elif st.session_state.total_picks > 0:
@@ -197,7 +207,6 @@ def render_live_draft_board():
         if st.session_state.board_html:
             st.markdown(st.session_state.board_html, unsafe_allow_html=True)
 
-    # 2. Fetch data with resilient error handling
     players_df = fetch_players_data()
     if players_df.empty:
         st.toast("⚠️ Base player data unavailable. Retrying...")
@@ -210,7 +219,6 @@ def render_live_draft_board():
         response.raise_for_status()
         choices_data = response.json()
     except Exception as e:
-        # Non-intrusive toast instead of an app-breaking red error
         st.toast("⚠️ FPL API blip. Keeping previous board on screen while retrying...")
         draw_board_ui()
         return
@@ -230,7 +238,12 @@ def render_live_draft_board():
     current_picks_made = len(made_picks_df)
     current_total_picks = len(choices_df)
 
-    # 3. SMART RENDERING: Only do expensive data merging if a new pick was actually made
+    # NEW: Automatically stop refreshing if the draft just hit 100% completion
+    if current_total_picks > 0 and current_picks_made == current_total_picks:
+        if not st.session_state.pause_updates:
+            st.session_state.pause_updates = True
+            st.rerun() # Forces the whole script to restart instantly, killing the timer
+
     if current_picks_made != st.session_state.picks_made or st.session_state.board_html == "":
         
         made_picks_df["player_display"] = made_picks_df["player_first_name"] + " " + made_picks_df["player_last_name"].str[0]
@@ -284,12 +297,10 @@ def render_live_draft_board():
 
         html_out += '</div></div>'
         
-        # Save the generated HTML and pick counts to memory
         st.session_state.board_html = html_out
         st.session_state.picks_made = current_picks_made
         st.session_state.total_picks = current_total_picks
 
-    # Render the final UI
     draw_board_ui()
 
 # --- INITIALIZE ---
