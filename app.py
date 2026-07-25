@@ -62,23 +62,26 @@ st.markdown("""
     
     /* SCALABLE STATS UNDERNEATH TEAM NAMES */
     .manager-stats-top {
-        display: flex; justify-content: space-evenly; gap: 2px;
+        display: flex; justify-content: space-evenly; gap: 4px;
         font-size: clamp(0.6rem, 0.75vw, 0.85rem);
         font-weight: normal; opacity: 0.9; margin-top: 6px; padding-top: 4px; 
         border-top: 1px dotted var(--border-color);
     }
     .manager-stats-top span {
-        white-space: nowrap; /* Prevents time from splitting across lines */
+        white-space: nowrap; 
     }
     
-    /* HIGHLIGHTED SQUAD VALUE */
+    /* REVERTED SQUAD VALUE WITH SUBTLE HIGHLIGHTS */
     .manager-stats-bottom {
-        flex-shrink: 0; text-align: center; font-weight: 800;
+        flex-shrink: 0; text-align: center; font-weight: 700;
         font-size: clamp(0.75rem, 1vw, 1.1rem);
-        margin-top: auto; padding: 4px 2px; 
-        background-color: #00ff87; color: #111111; 
-        border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        margin-top: auto; padding-top: 4px; border-top: 2px solid #00ff87;
     }
+    
+    .val-high { color: #22c55e; font-weight: 800; } /* Green */
+    .val-low { color: #ef4444; font-weight: 800; } /* Red */
+    .time-fast { color: #22c55e; font-weight: 800; } /* Green */
+    .time-slow { color: #ef4444; font-weight: 800; } /* Red */
     
     /* SCALABLE POSITION TITLES */
     .pos-title {
@@ -162,7 +165,7 @@ def fetch_league_details(league_id):
 
 def format_time(seconds):
     m, s = divmod(int(seconds), 60)
-    return f"{m}m{s}s"  # Condensed format to save horizontal space
+    return f"{m}m{s}s"
 
 # --- UI LAYOUT & SIDEBAR ---
 st.sidebar.header("⚙️ Draft Settings")
@@ -270,15 +273,6 @@ def render_live_draft_board():
         first_picks = merged_df.groupby("entry_name")["index"].min().sort_values()
         manager_order = first_picks.index.tolist()
         
-        manager_names = (
-            made_picks_df.drop_duplicates("entry_name")
-            .set_index("entry_name")["player_display"]
-            .reindex(manager_order)
-            .fillna("Unknown")
-            .to_dict()
-        )
-        
-        # PRE-CALCULATE POST-DRAFT STATS
         manager_stats = {}
         if current_picks_made == current_total_picks and current_total_picks > 0:
             report_df = made_picks_df.sort_values("index").copy()
@@ -288,10 +282,8 @@ def render_live_draft_board():
             if draft_start_dt:
                 api_start_time = pd.to_datetime(draft_start_dt)
                 first_pick_duration = (report_df["choice_time_dt"].iloc[0] - api_start_time).total_seconds()
-                
                 if first_pick_duration > 90 or first_pick_duration < 0:
                     first_pick_duration = 60
-                    
                 report_df.iloc[0, report_df.columns.get_loc('time_taken')] = first_pick_duration
             else:
                 report_df["time_taken"] = report_df["time_taken"].fillna(60) 
@@ -302,18 +294,46 @@ def render_live_draft_board():
             else:
                 report_df["cost_mil"] = 0.0 
 
+            # Pre-calculate to find min and max for highlighting
+            raw_stats = {}
             for m in manager_order:
                 mgr_data = report_df[report_df["entry_name"] == m]
-                total_time = mgr_data["time_taken"].sum()
-                avg_time = mgr_data["time_taken"].mean()
-                total_value = mgr_data["cost_mil"].sum()
-                auto_picks = mgr_data["was_auto"].sum() 
-                
+                raw_stats[m] = {
+                    "total_time": mgr_data["time_taken"].sum(),
+                    "total_value": mgr_data["cost_mil"].sum(),
+                    "auto": mgr_data["was_auto"].sum()
+                }
+
+            valid_times = [s["total_time"] for s in raw_stats.values() if s["total_time"] > 0]
+            valid_values = [s["total_value"] for s in raw_stats.values() if s["total_value"] > 0]
+            
+            min_time = min(valid_times) if valid_times else -1
+            max_time = max(valid_times) if valid_times else -1
+            min_val = min(valid_values) if valid_values else -1
+            max_val = max(valid_values) if valid_values else -1
+
+            for m in manager_order:
+                t = raw_stats[m]["total_time"]
+                v = raw_stats[m]["total_value"]
+                a = raw_stats[m]["auto"]
+
+                time_formatted = format_time(t)
+                val_formatted = f"£{v:.1f}m" if v > 0 else "N/A"
+
+                if t > 0 and t == min_time:
+                    time_formatted = f'<span class="time-fast" title="Fastest Drafter!">{time_formatted}</span>'
+                elif t > 0 and t == max_time:
+                    time_formatted = f'<span class="time-slow" title="Slowest Drafter...">{time_formatted}</span>'
+
+                if v > 0 and v == max_val:
+                    val_formatted = f'<span class="val-high" title="Highest Squad Value!">{val_formatted}</span>'
+                elif v > 0 and v == min_val:
+                    val_formatted = f'<span class="val-low" title="Lowest Squad Value...">{val_formatted}</span>'
+
                 manager_stats[m] = {
-                    "value": f"£{total_value:.1f}m" if total_value > 0 else "N/A",
-                    "total": format_time(total_time),
-                    "avg": format_time(avg_time),
-                    "auto": int(auto_picks)
+                    "value_html": val_formatted,
+                    "time_html": time_formatted,
+                    "auto": int(a)
                 }
 
         merged_df = merged_df.sort_values(["element_type", "index"])
@@ -330,9 +350,8 @@ def render_live_draft_board():
             if m in manager_stats:
                 stats = manager_stats[m]
                 html_out += '<div class="manager-stats-top">'
-                html_out += f'<span title="Total Picking Time">⏱️ {stats["total"]}</span>'
+                html_out += f'<span title="Total Picking Time">⏱️ {stats["time_html"]}</span>'
                 html_out += f'<span title="Number of Autopicks">🤖 {stats["auto"]}</span>'
-                html_out += f'<span title="Average Time per Pick">⏳ {stats["avg"]}</span>'
                 html_out += '</div>'
 
             html_out += '</div>'
@@ -356,7 +375,7 @@ def render_live_draft_board():
             
             if m in manager_stats:
                 stats = manager_stats[m]
-                html_out += f'<div class="manager-stats-bottom" title="Total Squad Value">💷 {stats["value"]}</div>'
+                html_out += f'<div class="manager-stats-bottom" title="Total Squad Value">💷 {stats["value_html"]}</div>'
                         
             html_out += '</div>' 
         html_out += '</div></div>'
