@@ -11,11 +11,10 @@ if "picks_made" not in st.session_state:
     st.session_state.picks_made = 0
     st.session_state.total_picks = 0
     st.session_state.board_html = ""
-    st.session_state.report_df = None # Changed from string to None for DataFrame handling
 if "pause_updates" not in st.session_state:
     st.session_state.pause_updates = False
 if "draft_ended" not in st.session_state:
-    st.session_state.draft_ended = False # New independent flag to stop the timer cleanly
+    st.session_state.draft_ended = False 
 
 # --- CUSTOM CSS FOR "ZOOM BROADCAST" UI ---
 st.markdown("""
@@ -43,15 +42,37 @@ st.markdown("""
         background-color: var(--secondary-background-color);
         border: 1px solid var(--border-color); border-radius: 4px; padding: 4px; overflow: hidden;
     }
+    
+    /* Updated Header styling to support dropdowns */
     .manager-header {
         flex-shrink: 0; text-align: center; font-weight: 700; font-size: 0.8rem;
         margin-bottom: 4px; padding-bottom: 4px; border-bottom: 2px solid #00ff87; 
+    }
+    .manager-title-wrap {
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .team-name {
         font-size: 0.6rem; font-weight: 400; opacity: 0.7; display: block;
         margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
+    
+    /* Stats Dropdown UI */
+    .stats-expander {
+        margin-top: 6px; font-size: 0.65rem; font-weight: normal;
+        background-color: var(--background-color); border: 1px solid var(--border-color);
+        border-radius: 4px; padding: 2px 4px; text-align: left;
+    }
+    .stats-expander summary {
+        cursor: pointer; text-align: center; font-weight: 600; 
+        list-style: none; padding: 2px 0; opacity: 0.8;
+    }
+    .stats-expander summary:hover { opacity: 1; }
+    .stats-expander summary::-webkit-details-marker { display: none; }
+    .stats-content {
+        padding: 4px 2px; border-top: 1px dashed var(--border-color); 
+        margin-top: 2px; line-height: 1.4;
+    }
+    
     .pos-title {
         flex-shrink: 0; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.5px;
         opacity: 0.6; margin: 4px 0 2px 0; border-bottom: 1px solid var(--border-color); text-align: center;
@@ -138,7 +159,7 @@ st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
 
 if st.sidebar.button("🔄 Manual Refresh", use_container_width=True):
     st.session_state.picks_made = -1 
-    st.session_state.draft_ended = False # Reset the completion flag on manual refresh
+    st.session_state.draft_ended = False 
     st.cache_data.clear() 
 
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
@@ -146,8 +167,6 @@ POS_CLASS_MAP = {1: "card-gk", 2: "card-def", 3: "card-mid", 4: "card-fwd"}
 ROSTER_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3} 
 
 league_name = fetch_league_name(league_id)
-
-# Halts the background timer if either the manual toggle is ON or the draft has inherently ended
 is_paused = st.session_state.pause_updates or st.session_state.draft_ended
 refresh_timer = None if is_paused else timedelta(seconds=refresh_seconds)
 
@@ -182,12 +201,6 @@ def render_live_draft_board():
         
         if st.session_state.board_html:
             st.markdown(st.session_state.board_html, unsafe_allow_html=True)
-            
-        # Reveal the Post-Draft Report if it exists safely using DataFrame checks
-        if st.session_state.picks_made == st.session_state.total_picks and st.session_state.total_picks > 0:
-            if st.session_state.report_df is not None and not st.session_state.report_df.empty:
-                with st.expander("📊 Post-Draft Report & Analytics", expanded=True):
-                    st.dataframe(st.session_state.report_df, use_container_width=True, hide_index=True)
 
     players_df = fetch_players_data()
     if players_df.empty:
@@ -220,7 +233,6 @@ def render_live_draft_board():
     current_picks_made = len(made_picks_df)
     current_total_picks = len(choices_df)
 
-    # Trigger the auto-stop flag independently of the widget
     if current_total_picks > 0 and current_picks_made == current_total_picks:
         if not st.session_state.draft_ended:
             st.session_state.draft_ended = True
@@ -246,18 +258,60 @@ def render_live_draft_board():
             .to_dict()
         )
         
+        # PRE-CALCULATE POST-DRAFT STATS
+        manager_stats = {}
+        if current_picks_made == current_total_picks and current_total_picks > 0:
+            report_df = made_picks_df.sort_values("index").copy()
+            report_df["choice_time_dt"] = pd.to_datetime(report_df["choice_time"])
+            report_df["time_taken"] = report_df["choice_time_dt"].diff().dt.total_seconds()
+            report_df["time_taken"] = report_df["time_taken"].fillna(60) 
+
+            prices_df = fetch_main_game_prices()
+            if not prices_df.empty:
+                report_df = report_df.merge(prices_df, left_on="element", right_on="id", how="left")
+            else:
+                report_df["cost_mil"] = 0.0 
+
+            for m in manager_order:
+                mgr_data = report_df[report_df["entry_name"] == m]
+                total_time = mgr_data["time_taken"].sum()
+                avg_time = mgr_data["time_taken"].mean()
+                total_value = mgr_data["cost_mil"].sum()
+                
+                manager_stats[m] = {
+                    "value": f"£{total_value:.1f}m" if total_value > 0 else "N/A",
+                    "total": format_time(total_time),
+                    "avg": format_time(avg_time)
+                }
+
         merged_df = merged_df.sort_values(["element_type", "index"])
 
+        # BUILD HTML
         html_out = '<div class="draft-board-wrapper"><div class="draft-container">'
 
         for m in manager_order:
             html_out += f'''
             <div class="manager-col">
                 <div class="manager-header" title="{manager_names[m]}">
-                    {manager_names[m]}
+                    <div class="manager-title-wrap">{manager_names[m]}</div>
                     <span class="team-name" title="{m}">{m}</span>
-                </div>
             '''
+            
+            # Inject expandable stats securely inside the header if draft is completed
+            if m in manager_stats:
+                stats = manager_stats[m]
+                html_out += f'''
+                    <details class="stats-expander">
+                        <summary>📊 Stats</summary>
+                        <div class="stats-content">
+                            <b>Value:</b> {stats['value']}<br>
+                            <b>Total Time:</b> {stats['total']}<br>
+                            <b>Avg Pick:</b> {stats['avg']}
+                        </div>
+                    </details>
+                '''
+
+            html_out += '</div>' # Close manager-header
             
             for pos_id in [1, 2, 3, 4]:
                 pos_name = POSITION_MAP[pos_id]
@@ -282,38 +336,6 @@ def render_live_draft_board():
         st.session_state.board_html = html_out
         st.session_state.picks_made = current_picks_made
         st.session_state.total_picks = current_total_picks
-
-        # ==========================================
-        # POST-DRAFT REPORT GENERATOR
-        # ==========================================
-        if current_picks_made == current_total_picks and current_total_picks > 0:
-            report_df = made_picks_df.sort_values("index").copy()
-            report_df["choice_time_dt"] = pd.to_datetime(report_df["choice_time"])
-            report_df["time_taken"] = report_df["choice_time_dt"].diff().dt.total_seconds()
-            report_df["time_taken"] = report_df["time_taken"].fillna(60) 
-
-            prices_df = fetch_main_game_prices()
-            if not prices_df.empty:
-                report_df = report_df.merge(prices_df, left_on="element", right_on="id", how="left")
-            else:
-                report_df["cost_mil"] = 0.0 
-
-            stats = []
-            for m in manager_order:
-                mgr_data = report_df[report_df["entry_name"] == m]
-                total_time = mgr_data["time_taken"].sum()
-                avg_time = mgr_data["time_taken"].mean()
-                total_value = mgr_data["cost_mil"].sum()
-                
-                stats.append({
-                    "Manager": f"{manager_names[m]} ({m})",
-                    "Squad Value": f"£{total_value:.1f}m" if total_value > 0 else "N/A",
-                    "Total Time Picking": format_time(total_time),
-                    "Avg Time / Pick": format_time(avg_time)
-                })
-            
-            # Save the report DataFrame to session state safely
-            st.session_state.report_df = pd.DataFrame(stats)
 
     draw_board_ui()
 
