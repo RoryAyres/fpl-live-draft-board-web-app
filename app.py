@@ -110,7 +110,6 @@ st.markdown("""
         justify-content: center;
         opacity: 0.3;
     }
-    /* Dim the team name slightly so the player name stands out */
     .pl-team {
         opacity: 0.5;
         font-size: 0.65rem;
@@ -127,20 +126,12 @@ def fetch_players_data():
         response = requests.get(game_data_url, timeout=10)
         response.raise_for_status()
         data = response.json()
-        
-        # 1. Grab players and their assigned team ID
         players_df = pd.DataFrame(data["elements"])[["id", "web_name", "element_type", "team"]]
-        
-        # 2. Grab the Premier League teams and their short names
         teams_df = pd.DataFrame(data["teams"])[["id", "short_name"]]
-        
-        # 3. Create a dictionary to map team IDs to their abbreviations (e.g., 1 -> ARS)
         team_map = dict(zip(teams_df["id"], teams_df["short_name"]))
         players_df["team_name"] = players_df["team"].map(team_map)
-        
         return players_df
     except Exception as e:
-        st.error(f"⚠️ Error fetching base player data: {e}")
         return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
@@ -170,17 +161,58 @@ refresh_timer = None if pause_updates else timedelta(seconds=refresh_seconds)
 # --- AUTO-REFRESHING LIVE COMPONENT ---
 @st.fragment(run_every=refresh_timer)
 def render_live_draft_board():
+    
+    # 1. Initialize session state to enable Smart Rendering & Fallbacks
+    if "picks_made" not in st.session_state:
+        st.session_state.picks_made = 0
+        st.session_state.total_picks = 0
+        st.session_state.board_html = ""
+        
+    # Helper function to draw the UI using session state variables
+    def draw_board_ui():
+        col_title, col1, col2, col3 = st.columns([1.5, 1, 1.5, 1]) 
+        with col_title:
+            st.markdown(f"### ⚽ {league_name}") 
+
+        with col1:
+            st.metric("Total Picks", f"{st.session_state.picks_made} / {st.session_state.total_picks}")
+        
+        with col2:
+            if pause_updates:
+                st.warning("⏸️ Updates Paused")
+            elif st.session_state.total_picks > 0 and st.session_state.picks_made == st.session_state.total_picks:
+                st.success("✅ Draft Complete!")
+            elif st.session_state.total_picks > 0:
+                st.write("🚧 **Draft In Progress**")
+                st.progress(st.session_state.picks_made / st.session_state.total_picks)
+            else:
+                st.info("🟡 Waiting for draft to begin...")
+                
+        with col3:
+            now_bst = datetime.now(timezone.utc) + timedelta(hours=1)
+            st.metric("Last Synced", now_bst.strftime("%H:%M:%S BST"))
+
+        st.markdown("<hr style='margin: 0rem 0 0.5rem 0'>", unsafe_allow_html=True) 
+        
+        if st.session_state.board_html:
+            st.markdown(st.session_state.board_html, unsafe_allow_html=True)
+
+    # 2. Fetch data with resilient error handling
     players_df = fetch_players_data()
     if players_df.empty:
+        st.toast("⚠️ Base player data unavailable. Retrying...")
+        draw_board_ui()
         return
 
     choices_url = f"https://draft.premierleague.com/api/draft/{league_id}/choices"
-    
     try:
         response = requests.get(choices_url, timeout=10)
+        response.raise_for_status()
         choices_data = response.json()
     except Exception as e:
-        st.error(f"⚠️ Failed to connect to FPL API: {e}")
+        # Non-intrusive toast instead of an app-breaking red error
+        st.toast("⚠️ FPL API blip. Keeping previous board on screen while retrying...")
+        draw_board_ui()
         return
 
     if isinstance(choices_data, dict) and choices_data.get("detail") == "No League matches the given query.":
@@ -188,104 +220,77 @@ def render_live_draft_board():
         return
 
     choices = choices_data.get("choices", [])
-    
-    if not choices:
-        st.info("🟡 Draft has not started yet. Waiting for the first pick...")
-        return
-
-    choices_df = pd.DataFrame(choices)[["entry_name", "player_first_name", "player_last_name", "element", "index", "choice_time"]]
-
-    if choices_df["element"].isna().all():
+    if not choices or pd.DataFrame(choices)["element"].isna().all():
         st.info("🟡 Draft room is open! Waiting for the first pick to be made...")
         return
 
+    choices_df = pd.DataFrame(choices)[["entry_name", "player_first_name", "player_last_name", "element", "index", "choice_time"]]
     made_picks_df = choices_df[choices_df["element"].notna()].copy()
-    picks_made = len(made_picks_df)
-    total_picks = len(choices_df)
-
-    # --- RENDER TOP METRICS & TITLE IN ONE ROW ---
-    col_title, col1, col2, col3 = st.columns([1.5, 1, 1.5, 1]) 
     
-    with col_title:
-        st.markdown(f"### ⚽ {league_name}") 
+    current_picks_made = len(made_picks_df)
+    current_total_picks = len(choices_df)
 
-    with col1:
-        st.metric("Total Picks", f"{picks_made} / {total_picks}")
-    
-    with col2:
-        if pause_updates:
-            st.warning("⏸️ Updates Paused")
-        elif picks_made == total_picks:
-            st.success("✅ Draft Complete!")
-        else:
-            st.write("🚧 **Draft In Progress**")
-            progress_val = min(picks_made / total_picks, 1.0) if total_picks > 0 else 0.0
-            st.progress(progress_val)
-            
-    with col3:
-        now_bst = datetime.now(timezone.utc) + timedelta(hours=1)
-        st.metric("Last Synced", now_bst.strftime("%H:%M:%S BST"))
-
-    st.markdown("<hr style='margin: 0rem 0 0.5rem 0'>", unsafe_allow_html=True) 
-
-    # --- DATA PROCESSING ---
-    made_picks_df["player_display"] = made_picks_df["player_first_name"] + " " + made_picks_df["player_last_name"].str[0]
-    merged_df = made_picks_df.merge(players_df, left_on="element", right_on="id", how="left")
-    merged_df["position"] = merged_df["element_type"].map(POSITION_MAP)
-    
-    # Format the name cleanly with the team abbreviation
-    merged_df["player_name"] = merged_df["web_name"] + " <span class='pl-team'>(" + merged_df["team_name"] + ")</span>"
-    
-    # Keep an unformatted version strictly for the hover title text
-    merged_df["hover_name"] = merged_df["web_name"] + " (" + merged_df["team_name"] + ")"
-
-    first_picks = merged_df.groupby("entry_name")["index"].min().sort_values()
-    manager_order = first_picks.index.tolist()
-    
-    manager_names = (
-        made_picks_df.drop_duplicates("entry_name")
-        .set_index("entry_name")["player_display"]
-        .reindex(manager_order)
-        .fillna("Unknown")
-        .to_dict()
-    )
-    
-    merged_df = merged_df.sort_values(["element_type", "index"])
-
-    # --- BUILD HTML DRAFT BOARD ---
-    html_out = '<div class="draft-board-wrapper"><div class="draft-container">'
-
-    for m in manager_order:
-        html_out += f'''
-        <div class="manager-col">
-            <div class="manager-header" title="{manager_names[m]}">
-                {manager_names[m]}
-                <span class="team-name" title="{m}">{m}</span>
-            </div>
-        '''
+    # 3. SMART RENDERING: Only do expensive data merging if a new pick was actually made
+    if current_picks_made != st.session_state.picks_made or st.session_state.board_html == "":
         
-        for pos_id in [1, 2, 3, 4]:
-            pos_name = POSITION_MAP[pos_id]
-            html_out += f'<div class="pos-title">{pos_name}</div>'
-            
-            # Get data for this manager and position
-            manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
-            picks_formatted = manager_pos_picks["player_name"].tolist()
-            picks_hover = manager_pos_picks["hover_name"].tolist()
-            
-            required_spots = ROSTER_LIMITS[pos_id]
-            
-            for i in range(required_spots):
-                if i < len(picks_formatted):
-                    html_out += f'<div class="player-card" title="{picks_hover[i]}">{picks_formatted[i]}</div>'
-                else:
-                    html_out += '<div class="empty-card">-</div>'
-                    
-        html_out += '</div>' 
+        made_picks_df["player_display"] = made_picks_df["player_first_name"] + " " + made_picks_df["player_last_name"].str[0]
+        merged_df = made_picks_df.merge(players_df, left_on="element", right_on="id", how="left")
+        merged_df["position"] = merged_df["element_type"].map(POSITION_MAP)
+        
+        merged_df["player_name"] = merged_df["web_name"] + " <span class='pl-team'>(" + merged_df["team_name"] + ")</span>"
+        merged_df["hover_name"] = merged_df["web_name"] + " (" + merged_df["team_name"] + ")"
 
-    html_out += '</div></div>'
+        first_picks = merged_df.groupby("entry_name")["index"].min().sort_values()
+        manager_order = first_picks.index.tolist()
+        
+        manager_names = (
+            made_picks_df.drop_duplicates("entry_name")
+            .set_index("entry_name")["player_display"]
+            .reindex(manager_order)
+            .fillna("Unknown")
+            .to_dict()
+        )
+        
+        merged_df = merged_df.sort_values(["element_type", "index"])
 
-    st.markdown(html_out, unsafe_allow_html=True)
+        html_out = '<div class="draft-board-wrapper"><div class="draft-container">'
+
+        for m in manager_order:
+            html_out += f'''
+            <div class="manager-col">
+                <div class="manager-header" title="{manager_names[m]}">
+                    {manager_names[m]}
+                    <span class="team-name" title="{m}">{m}</span>
+                </div>
+            '''
+            
+            for pos_id in [1, 2, 3, 4]:
+                pos_name = POSITION_MAP[pos_id]
+                html_out += f'<div class="pos-title">{pos_name}</div>'
+                
+                manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
+                picks_formatted = manager_pos_picks["player_name"].tolist()
+                picks_hover = manager_pos_picks["hover_name"].tolist()
+                
+                required_spots = ROSTER_LIMITS[pos_id]
+                
+                for i in range(required_spots):
+                    if i < len(picks_formatted):
+                        html_out += f'<div class="player-card" title="{picks_hover[i]}">{picks_formatted[i]}</div>'
+                    else:
+                        html_out += '<div class="empty-card">-</div>'
+                        
+            html_out += '</div>' 
+
+        html_out += '</div></div>'
+        
+        # Save the generated HTML and pick counts to memory
+        st.session_state.board_html = html_out
+        st.session_state.picks_made = current_picks_made
+        st.session_state.total_picks = current_total_picks
+
+    # Render the final UI
+    draw_board_ui()
 
 # --- INITIALIZE ---
 render_live_draft_board()
