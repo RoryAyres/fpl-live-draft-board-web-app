@@ -11,6 +11,7 @@ if "picks_made" not in st.session_state:
     st.session_state.picks_made = 0
     st.session_state.total_picks = 0
     st.session_state.board_html = ""
+    st.session_state.report_html = "" # New state for the post-draft report
 if "pause_updates" not in st.session_state:
     st.session_state.pause_updates = False
 
@@ -19,7 +20,7 @@ st.markdown("""
     <style>
     .block-container {
         padding-top: 3rem !important; 
-        padding-bottom: 0rem !important;
+        padding-bottom: 2rem !important;
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
         max-width: 100% !important;
@@ -27,117 +28,56 @@ st.markdown("""
     #MainMenu {visibility: hidden;} 
     footer {visibility: hidden;}
     
-    [data-testid="stMetricValue"] {
-        font-size: 1.4rem !important;
-    }
-    [data-testid="stMetricLabel"] {
-        font-size: 0.75rem !important;
-    }
-    h3 {
-        margin-top: 0px !important; 
-        margin-bottom: 0px !important;
-        padding-bottom: 0px !important;
-    }
+    [data-testid="stMetricValue"] { font-size: 1.4rem !important; }
+    [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
+    h3 { margin-top: 0px !important; margin-bottom: 0px !important; padding-bottom: 0px !important; }
     
-    .draft-board-wrapper {
-        width: 100%;
-        overflow: hidden; 
-    }
+    .draft-board-wrapper { width: 100%; overflow: hidden; margin-bottom: 20px;}
     .draft-container {
-        display: flex;
-        gap: 4px; 
-        width: 100%;
-        height: calc(100vh - 200px); 
+        display: flex; gap: 4px; width: 100%; height: calc(100vh - 200px); 
     }
     .manager-col {
-        flex: 1 1 0; 
-        display: flex;
-        flex-direction: column; 
+        flex: 1 1 0; display: flex; flex-direction: column; 
         background-color: var(--secondary-background-color);
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
-        padding: 4px;
-        overflow: hidden;
+        border: 1px solid var(--border-color); border-radius: 4px; padding: 4px; overflow: hidden;
     }
     .manager-header {
-        flex-shrink: 0; 
-        text-align: center;
-        font-weight: 700;
-        font-size: 0.8rem;
-        margin-bottom: 4px;
-        padding-bottom: 4px;
-        border-bottom: 2px solid #00ff87; 
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        flex-shrink: 0; text-align: center; font-weight: 700; font-size: 0.8rem;
+        margin-bottom: 4px; padding-bottom: 4px; border-bottom: 2px solid #00ff87; 
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .team-name {
-        font-size: 0.6rem;
-        font-weight: 400;
-        opacity: 0.7;
-        display: block;
-        margin-top: 2px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        font-size: 0.6rem; font-weight: 400; opacity: 0.7; display: block;
+        margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .pos-title {
-        flex-shrink: 0;
-        font-size: 0.55rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        opacity: 0.6;
-        margin: 4px 0 2px 0;
-        border-bottom: 1px solid var(--border-color);
-        text-align: center;
+        flex-shrink: 0; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.5px;
+        opacity: 0.6; margin: 4px 0 2px 0; border-bottom: 1px solid var(--border-color); text-align: center;
     }
     
     .player-card, .empty-card {
-        flex: 1 1 0; 
-        display: flex;
-        align-items: center; 
-        background-color: var(--background-color);
-        border: 1px solid var(--border-color);
-        padding: 0 4px 0 8px; /* Slightly increased left padding for the inner indicator */
-        margin-bottom: 3px;
-        border-radius: 3px;
-        font-size: 0.75rem; 
-        font-weight: 500;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        position: relative; /* Required for the pseudo-element indicator */
+        flex: 1 1 0; display: flex; align-items: center; 
+        background-color: var(--background-color); border: 1px solid var(--border-color);
+        padding: 0 4px 0 8px; margin-bottom: 3px; border-radius: 3px;
+        font-size: 0.75rem; font-weight: 500; white-space: nowrap; overflow: hidden;
+        text-overflow: ellipsis; box-shadow: 0 1px 2px rgba(0,0,0,0.05); position: relative; 
     }
     
-    /* SUBTLE & SHORTER POSITION COLOR CODING */
+    /* SUBTLE POSITION COLOR CODING */
     .card-gk::before, .card-def::before, .card-mid::before, .card-fwd::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: 20%;      /* Creates a gap at the top */
-        bottom: 20%;   /* Creates a gap at the bottom */
-        width: 3px;
-        border-radius: 0 2px 2px 0;
-        opacity: 0.55; /* Fades the color to make it softer */
+        content: ""; position: absolute; left: 0; top: 20%; bottom: 20%; width: 3px;
+        border-radius: 0 2px 2px 0; opacity: 0.55; 
     }
-    .card-gk::before { background-color: #eab308; }  /* Yellow */
-    .card-def::before { background-color: #3b82f6; } /* Blue */
-    .card-mid::before { background-color: #22c55e; } /* Green */
-    .card-fwd::before { background-color: #ef4444; } /* Red */
+    .card-gk::before { background-color: #eab308; }  
+    .card-def::before { background-color: #3b82f6; } 
+    .card-mid::before { background-color: #22c55e; } 
+    .card-fwd::before { background-color: #ef4444; } 
     
     .empty-card {
-        background-color: transparent;
-        border: 1px dashed var(--border-color);
-        justify-content: center;
-        opacity: 0.3;
-        padding: 0 4px; /* Resets padding for empty boxes */
+        background-color: transparent; border: 1px dashed var(--border-color);
+        justify-content: center; opacity: 0.3; padding: 0 4px; 
     }
-    .pl-team {
-        opacity: 0.5;
-        font-size: 0.65rem;
-        margin-left: 4px;
-    }
+    .pl-team { opacity: 0.5; font-size: 0.65rem; margin-left: 4px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -157,6 +97,20 @@ def fetch_players_data():
     except Exception as e:
         return pd.DataFrame()
 
+# NEW: Fetch Main Game prices for the Post-Draft Report
+@st.cache_data(ttl=3600)
+def fetch_main_game_prices():
+    main_game_url = "https://fantasy.premierleague.com/api/bootstrap-static/"
+    try:
+        response = requests.get(main_game_url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        prices_df = pd.DataFrame(data["elements"])[["id", "now_cost"]]
+        prices_df["cost_mil"] = prices_df["now_cost"] / 10.0
+        return prices_df
+    except Exception:
+        return pd.DataFrame()
+
 @st.cache_data(ttl=3600)
 def fetch_league_name(league_id):
     league_details_url = f"https://draft.premierleague.com/api/league/{league_id}/details"
@@ -168,13 +122,17 @@ def fetch_league_name(league_id):
     except Exception:
         return f"League {league_id}"
 
+# --- UTILITY: Format Seconds into MM:SS ---
+def format_time(seconds):
+    m, s = divmod(int(seconds), 60)
+    return f"{m}m {s}s"
+
 # --- UI LAYOUT & SIDEBAR ---
 st.sidebar.header("⚙️ Draft Settings")
 league_id = st.sidebar.number_input("League ID", min_value=1, value=217, step=1)
 refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, max_value=30, value=5)
 
 st.sidebar.markdown("---")
-
 st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
 
 if st.sidebar.button("🔄 Manual Refresh", use_container_width=True):
@@ -222,6 +180,12 @@ def render_live_draft_board():
         
         if st.session_state.board_html:
             st.markdown(st.session_state.board_html, unsafe_allow_html=True)
+            
+        # Reveal the Post-Draft Report if it exists
+        if st.session_state.picks_made == st.session_state.total_picks and st.session_state.total_picks > 0:
+            if st.session_state.report_html:
+                with st.expander("📊 Post-Draft Report & Analytics", expanded=True):
+                    st.dataframe(st.session_state.report_html, use_container_width=True, hide_index=True)
 
     players_df = fetch_players_data()
     if players_df.empty:
@@ -310,12 +274,48 @@ def render_live_draft_board():
                         html_out += '<div class="empty-card">-</div>'
                         
             html_out += '</div>' 
-
         html_out += '</div></div>'
         
         st.session_state.board_html = html_out
         st.session_state.picks_made = current_picks_made
         st.session_state.total_picks = current_total_picks
+
+        # ==========================================
+        # POST-DRAFT REPORT GENERATOR
+        # ==========================================
+        if current_picks_made == current_total_picks:
+            # 1. Calculate Time Taken Per Pick
+            report_df = made_picks_df.sort_values("index").copy()
+            report_df["choice_time_dt"] = pd.to_datetime(report_df["choice_time"])
+            # Subtract previous pick time from current pick time to find duration
+            report_df["time_taken"] = report_df["choice_time_dt"].diff().dt.total_seconds()
+            # Assume 60 seconds for the very first pick of the entire draft
+            report_df["time_taken"] = report_df["time_taken"].fillna(60) 
+
+            # 2. Fetch Squad Values from Main Game
+            prices_df = fetch_main_game_prices()
+            if not prices_df.empty:
+                report_df = report_df.merge(prices_df, left_on="element", right_on="id", how="left")
+            else:
+                report_df["cost_mil"] = 0.0 # Fallback if main game API is down
+
+            # 3. Aggregate stats per manager
+            stats = []
+            for m in manager_order:
+                mgr_data = report_df[report_df["entry_name"] == m]
+                total_time = mgr_data["time_taken"].sum()
+                avg_time = mgr_data["time_taken"].mean()
+                total_value = mgr_data["cost_mil"].sum()
+                
+                stats.append({
+                    "Manager": f"{manager_names[m]} ({m})",
+                    "Squad Value": f"£{total_value:.1f}m" if total_value > 0 else "N/A",
+                    "Total Time Picking": format_time(total_time),
+                    "Avg Time / Pick": format_time(avg_time)
+                })
+            
+            # Save the report DataFrame to session state to be rendered
+            st.session_state.report_html = pd.DataFrame(stats)
 
     draw_board_ui()
 
