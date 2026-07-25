@@ -63,17 +63,15 @@ st.markdown("""
     
     /* SQUAD VALUE & EMOJIS */
     .squad-value {
-        font-size: clamp(0.7rem, 0.85vw, 1rem); /* Reduced slightly */
+        font-size: clamp(0.7rem, 0.85vw, 1rem); 
         font-weight: 400; 
-        margin-top: 4px; /* Tightened spacing */
+        margin-top: 4px; 
     }
     .squad-value-1st {
         font-weight: 700; 
     }
     .rank-badge {
-        font-size: clamp(0.85rem, 1.1vw, 1.2rem); /* Increased size */
         opacity: 1.0; margin-left: 2px;
-        vertical-align: text-bottom;
     }
     
     /* STATS DIVIDER AND SPACING */
@@ -81,7 +79,7 @@ st.markdown("""
         display: flex; justify-content: space-evenly; gap: 4px;
         font-size: clamp(0.6rem, 0.75vw, 0.85rem);
         font-weight: normal; opacity: 0.9; 
-        margin-top: 4px; margin-bottom: 4px; padding-bottom: 4px; /* Tightened spacing */
+        margin-top: 4px; margin-bottom: 4px; padding-bottom: 4px; 
         border-bottom: 1px solid var(--border-color); 
     }
     .manager-stats-top span {
@@ -286,7 +284,6 @@ def render_live_draft_board():
             first_t = valid_times.min()
             last_t = valid_times.max()
             
-            # Formatted to include the day and abbreviated month
             start_str = (first_t + timedelta(hours=1)).strftime("%d %b %H:%M")
             
             if current_picks_made == current_total_picks and current_total_picks > 0:
