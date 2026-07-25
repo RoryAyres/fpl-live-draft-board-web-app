@@ -55,7 +55,6 @@ st.markdown("""
         margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     
-    /* NEW: Post-Draft Stat Blocks */
     .manager-stats-top {
         display: flex; justify-content: space-between; font-size: 0.55rem; 
         font-weight: normal; opacity: 0.8; margin-top: 6px; padding-top: 4px; 
@@ -79,7 +78,6 @@ st.markdown("""
         text-overflow: ellipsis; box-shadow: 0 1px 2px rgba(0,0,0,0.05); position: relative; 
     }
     
-    /* SUBTLE POSITION COLOR CODING */
     .card-gk::before, .card-def::before, .card-mid::before, .card-fwd::before {
         content: ""; position: absolute; left: 0; top: 20%; bottom: 20%; width: 3px;
         border-radius: 0 2px 2px 0; opacity: 0.55; 
@@ -126,18 +124,20 @@ def fetch_main_game_prices():
     except Exception:
         return pd.DataFrame()
 
+# Updated to fetch the scheduled start time (draft_dt)
 @st.cache_data(ttl=3600)
-def fetch_league_name(league_id):
+def fetch_league_details(league_id):
     league_details_url = f"https://draft.premierleague.com/api/league/{league_id}/details"
     try:
         response = requests.get(league_details_url, timeout=10)
         response.raise_for_status()
         data = response.json()
-        return data.get("league", {}).get("name", f"League {league_id}")
+        league_name = data.get("league", {}).get("name", f"League {league_id}")
+        draft_dt = data.get("league", {}).get("draft_dt", None)
+        return league_name, draft_dt
     except Exception:
-        return f"League {league_id}"
+        return f"League {league_id}", None
 
-# --- UTILITY: Format Seconds into MM:SS ---
 def format_time(seconds):
     m, s = divmod(int(seconds), 60)
     return f"{m}m {s}s"
@@ -159,7 +159,9 @@ POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards
 POS_CLASS_MAP = {1: "card-gk", 2: "card-def", 3: "card-mid", 4: "card-fwd"}
 ROSTER_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3} 
 
-league_name = fetch_league_name(league_id)
+# Fetch both the name and the start time
+league_name, draft_start_dt = fetch_league_details(league_id)
+
 is_paused = st.session_state.pause_updates or st.session_state.draft_ended
 refresh_timer = None if is_paused else timedelta(seconds=refresh_seconds)
 
@@ -220,7 +222,6 @@ def render_live_draft_board():
         st.info("🟡 Draft room is open! Waiting for the first pick to be made...")
         return
 
-    # Safely load the choices, ensuring 'was_auto' exists even if the API acts unexpectedly
     choices_df_raw = pd.DataFrame(choices)
     if "was_auto" not in choices_df_raw.columns:
         choices_df_raw["was_auto"] = False
@@ -261,8 +262,23 @@ def render_live_draft_board():
         if current_picks_made == current_total_picks and current_total_picks > 0:
             report_df = made_picks_df.sort_values("index").copy()
             report_df["choice_time_dt"] = pd.to_datetime(report_df["choice_time"])
+            
+            # Calculate standard pick times
             report_df["time_taken"] = report_df["choice_time_dt"].diff().dt.total_seconds()
-            report_df["time_taken"] = report_df["time_taken"].fillna(60) 
+            
+            # Handle the very first pick using the API's scheduled start time
+            if draft_start_dt:
+                api_start_time = pd.to_datetime(draft_start_dt)
+                first_pick_duration = (report_df["choice_time_dt"].iloc[0] - api_start_time).total_seconds()
+                
+                # Smart fallback: If the draft started late (meaning the calculated time is > 90s) 
+                # or negative, cap it at a standard 60 seconds so it doesn't skew the averages
+                if first_pick_duration > 90 or first_pick_duration < 0:
+                    first_pick_duration = 60
+                    
+                report_df.iloc[0, report_df.columns.get_loc('time_taken')] = first_pick_duration
+            else:
+                report_df["time_taken"] = report_df["time_taken"].fillna(60) 
 
             prices_df = fetch_main_game_prices()
             if not prices_df.empty:
@@ -275,7 +291,7 @@ def render_live_draft_board():
                 total_time = mgr_data["time_taken"].sum()
                 avg_time = mgr_data["time_taken"].mean()
                 total_value = mgr_data["cost_mil"].sum()
-                auto_picks = mgr_data["was_auto"].sum() # True evaluates to 1, False to 0
+                auto_picks = mgr_data["was_auto"].sum() 
                 
                 manager_stats[m] = {
                     "value": f"£{total_value:.1f}m" if total_value > 0 else "N/A",
@@ -295,7 +311,6 @@ def render_live_draft_board():
             html_out += f'<div class="manager-title-wrap">{manager_names[m]}</div>'
             html_out += f'<span class="team-name" title="{m}">{m}</span>'
             
-            # Inject top stats if draft is completed
             if m in manager_stats:
                 stats = manager_stats[m]
                 html_out += f'<div class="manager-stats-top">'
@@ -323,7 +338,6 @@ def render_live_draft_board():
                     else:
                         html_out += '<div class="empty-card">-</div>'
             
-            # Inject bottom stats if draft is completed
             if m in manager_stats:
                 stats = manager_stats[m]
                 html_out += f'<div class="manager-stats-bottom" title="Total Squad Value">💷 {stats["value"]}</div>'
