@@ -110,6 +110,12 @@ st.markdown("""
         justify-content: center;
         opacity: 0.3;
     }
+    /* Dim the team name slightly so the player name stands out */
+    .pl-team {
+        opacity: 0.5;
+        font-size: 0.65rem;
+        margin-left: 4px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -121,8 +127,18 @@ def fetch_players_data():
         response = requests.get(game_data_url, timeout=10)
         response.raise_for_status()
         data = response.json()
-        df = pd.DataFrame(data["elements"])[["id", "web_name", "element_type"]]
-        return df
+        
+        # 1. Grab players and their assigned team ID
+        players_df = pd.DataFrame(data["elements"])[["id", "web_name", "element_type", "team"]]
+        
+        # 2. Grab the Premier League teams and their short names
+        teams_df = pd.DataFrame(data["teams"])[["id", "short_name"]]
+        
+        # 3. Create a dictionary to map team IDs to their abbreviations (e.g., 1 -> ARS)
+        team_map = dict(zip(teams_df["id"], teams_df["short_name"]))
+        players_df["team_name"] = players_df["team"].map(team_map)
+        
+        return players_df
     except Exception as e:
         st.error(f"⚠️ Error fetching base player data: {e}")
         return pd.DataFrame()
@@ -146,7 +162,6 @@ st.sidebar.markdown("---")
 pause_updates = st.sidebar.toggle("⏸️ Pause Live Updates", value=False)
 
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
-# NEW: Hardcoded FPL draft squad limits to ensure the board renders exactly 15 slots from the start
 ROSTER_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3} 
 
 league_name = fetch_league_name(league_id)
@@ -217,7 +232,12 @@ def render_live_draft_board():
     made_picks_df["player_display"] = made_picks_df["player_first_name"] + " " + made_picks_df["player_last_name"].str[0]
     merged_df = made_picks_df.merge(players_df, left_on="element", right_on="id", how="left")
     merged_df["position"] = merged_df["element_type"].map(POSITION_MAP)
-    merged_df["player_name"] = merged_df["web_name"]
+    
+    # Format the name cleanly with the team abbreviation
+    merged_df["player_name"] = merged_df["web_name"] + " <span class='pl-team'>(" + merged_df["team_name"] + ")</span>"
+    
+    # Keep an unformatted version strictly for the hover title text
+    merged_df["hover_name"] = merged_df["web_name"] + " (" + merged_df["team_name"] + ")"
 
     first_picks = merged_df.groupby("entry_name")["index"].min().sort_values()
     manager_order = first_picks.index.tolist()
@@ -248,14 +268,16 @@ def render_live_draft_board():
             pos_name = POSITION_MAP[pos_id]
             html_out += f'<div class="pos-title">{pos_name}</div>'
             
-            picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]["player_name"].tolist()
+            # Get data for this manager and position
+            manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
+            picks_formatted = manager_pos_picks["player_name"].tolist()
+            picks_hover = manager_pos_picks["hover_name"].tolist()
             
-            # Now using the fixed 15-man structure limits instead of dynamic length checking
             required_spots = ROSTER_LIMITS[pos_id]
             
             for i in range(required_spots):
-                if i < len(picks):
-                    html_out += f'<div class="player-card" title="{picks[i]}">{picks[i]}</div>'
+                if i < len(picks_formatted):
+                    html_out += f'<div class="player-card" title="{picks_hover[i]}">{picks_formatted[i]}</div>'
                 else:
                     html_out += '<div class="empty-card">-</div>'
                     
