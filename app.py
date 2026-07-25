@@ -98,7 +98,7 @@ st.markdown("""
         align-items: center; 
         background-color: var(--background-color);
         border: 1px solid var(--border-color);
-        padding: 0 4px; 
+        padding: 0 4px 0 8px; /* Slightly increased left padding for the inner indicator */
         margin-bottom: 3px;
         border-radius: 3px;
         font-size: 0.75rem; 
@@ -107,19 +107,31 @@ st.markdown("""
         overflow: hidden;
         text-overflow: ellipsis;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        position: relative; /* Required for the pseudo-element indicator */
     }
     
-    /* SUBTLE POSITION COLOR CODING (LEFT BORDERS) */
-    .card-gk { border-left: 4px solid #eab308 !important; }  /* Yellow */
-    .card-def { border-left: 4px solid #3b82f6 !important; } /* Blue */
-    .card-mid { border-left: 4px solid #22c55e !important; } /* Green */
-    .card-fwd { border-left: 4px solid #ef4444 !important; } /* Red */
+    /* SUBTLE & SHORTER POSITION COLOR CODING */
+    .card-gk::before, .card-def::before, .card-mid::before, .card-fwd::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 20%;      /* Creates a gap at the top */
+        bottom: 20%;   /* Creates a gap at the bottom */
+        width: 3px;
+        border-radius: 0 2px 2px 0;
+        opacity: 0.55; /* Fades the color to make it softer */
+    }
+    .card-gk::before { background-color: #eab308; }  /* Yellow */
+    .card-def::before { background-color: #3b82f6; } /* Blue */
+    .card-mid::before { background-color: #22c55e; } /* Green */
+    .card-fwd::before { background-color: #ef4444; } /* Red */
     
     .empty-card {
         background-color: transparent;
         border: 1px dashed var(--border-color);
         justify-content: center;
         opacity: 0.3;
+        padding: 0 4px; /* Resets padding for empty boxes */
     }
     .pl-team {
         opacity: 0.5;
@@ -191,7 +203,7 @@ def render_live_draft_board():
         with col2:
             if st.session_state.pause_updates:
                 if st.session_state.total_picks > 0 and st.session_state.picks_made == st.session_state.total_picks:
-                    st.success("✅ Draft Complete! (Updates Paused)")
+                    st.success("✅ Draft Complete!")
                 else:
                     st.warning("⏸️ Updates Paused")
             elif st.session_state.total_picks > 0 and st.session_state.picks_made == st.session_state.total_picks:
@@ -293,7 +305,6 @@ def render_live_draft_board():
                 
                 for i in range(required_spots):
                     if i < len(picks_formatted):
-                        # Appending the position-specific CSS class to the card here
                         html_out += f'<div class="player-card {pos_css_class}" title="{picks_hover[i]}">{picks_formatted[i]}</div>'
                     else:
                         html_out += '<div class="empty-card">-</div>'
