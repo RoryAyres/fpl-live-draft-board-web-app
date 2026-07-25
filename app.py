@@ -11,9 +11,11 @@ if "picks_made" not in st.session_state:
     st.session_state.picks_made = 0
     st.session_state.total_picks = 0
     st.session_state.board_html = ""
-    st.session_state.report_html = "" # New state for the post-draft report
+    st.session_state.report_df = None # Changed from string to None for DataFrame handling
 if "pause_updates" not in st.session_state:
     st.session_state.pause_updates = False
+if "draft_ended" not in st.session_state:
+    st.session_state.draft_ended = False # New independent flag to stop the timer cleanly
 
 # --- CUSTOM CSS FOR "ZOOM BROADCAST" UI ---
 st.markdown("""
@@ -97,7 +99,6 @@ def fetch_players_data():
     except Exception as e:
         return pd.DataFrame()
 
-# NEW: Fetch Main Game prices for the Post-Draft Report
 @st.cache_data(ttl=3600)
 def fetch_main_game_prices():
     main_game_url = "https://fantasy.premierleague.com/api/bootstrap-static/"
@@ -137,6 +138,7 @@ st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
 
 if st.sidebar.button("🔄 Manual Refresh", use_container_width=True):
     st.session_state.picks_made = -1 
+    st.session_state.draft_ended = False # Reset the completion flag on manual refresh
     st.cache_data.clear() 
 
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
@@ -144,7 +146,10 @@ POS_CLASS_MAP = {1: "card-gk", 2: "card-def", 3: "card-mid", 4: "card-fwd"}
 ROSTER_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3} 
 
 league_name = fetch_league_name(league_id)
-refresh_timer = None if st.session_state.pause_updates else timedelta(seconds=refresh_seconds)
+
+# Halts the background timer if either the manual toggle is ON or the draft has inherently ended
+is_paused = st.session_state.pause_updates or st.session_state.draft_ended
+refresh_timer = None if is_paused else timedelta(seconds=refresh_seconds)
 
 # --- AUTO-REFRESHING LIVE COMPONENT ---
 @st.fragment(run_every=refresh_timer)
@@ -159,13 +164,10 @@ def render_live_draft_board():
             st.metric("Total Picks", f"{max(0, st.session_state.picks_made)} / {st.session_state.total_picks}")
         
         with col2:
-            if st.session_state.pause_updates:
-                if st.session_state.total_picks > 0 and st.session_state.picks_made == st.session_state.total_picks:
-                    st.success("✅ Draft Complete!")
-                else:
-                    st.warning("⏸️ Updates Paused")
-            elif st.session_state.total_picks > 0 and st.session_state.picks_made == st.session_state.total_picks:
+            if st.session_state.draft_ended:
                 st.success("✅ Draft Complete!")
+            elif st.session_state.pause_updates:
+                st.warning("⏸️ Updates Paused")
             elif st.session_state.total_picks > 0:
                 st.write("🚧 **Draft In Progress**")
                 st.progress(st.session_state.picks_made / st.session_state.total_picks)
@@ -181,11 +183,11 @@ def render_live_draft_board():
         if st.session_state.board_html:
             st.markdown(st.session_state.board_html, unsafe_allow_html=True)
             
-        # Reveal the Post-Draft Report if it exists
+        # Reveal the Post-Draft Report if it exists safely using DataFrame checks
         if st.session_state.picks_made == st.session_state.total_picks and st.session_state.total_picks > 0:
-            if st.session_state.report_html:
+            if st.session_state.report_df is not None and not st.session_state.report_df.empty:
                 with st.expander("📊 Post-Draft Report & Analytics", expanded=True):
-                    st.dataframe(st.session_state.report_html, use_container_width=True, hide_index=True)
+                    st.dataframe(st.session_state.report_df, use_container_width=True, hide_index=True)
 
     players_df = fetch_players_data()
     if players_df.empty:
@@ -218,9 +220,10 @@ def render_live_draft_board():
     current_picks_made = len(made_picks_df)
     current_total_picks = len(choices_df)
 
+    # Trigger the auto-stop flag independently of the widget
     if current_total_picks > 0 and current_picks_made == current_total_picks:
-        if not st.session_state.pause_updates:
-            st.session_state.pause_updates = True
+        if not st.session_state.draft_ended:
+            st.session_state.draft_ended = True
             st.rerun() 
 
     if current_picks_made != st.session_state.picks_made or st.session_state.board_html == "":
@@ -283,23 +286,18 @@ def render_live_draft_board():
         # ==========================================
         # POST-DRAFT REPORT GENERATOR
         # ==========================================
-        if current_picks_made == current_total_picks:
-            # 1. Calculate Time Taken Per Pick
+        if current_picks_made == current_total_picks and current_total_picks > 0:
             report_df = made_picks_df.sort_values("index").copy()
             report_df["choice_time_dt"] = pd.to_datetime(report_df["choice_time"])
-            # Subtract previous pick time from current pick time to find duration
             report_df["time_taken"] = report_df["choice_time_dt"].diff().dt.total_seconds()
-            # Assume 60 seconds for the very first pick of the entire draft
             report_df["time_taken"] = report_df["time_taken"].fillna(60) 
 
-            # 2. Fetch Squad Values from Main Game
             prices_df = fetch_main_game_prices()
             if not prices_df.empty:
                 report_df = report_df.merge(prices_df, left_on="element", right_on="id", how="left")
             else:
-                report_df["cost_mil"] = 0.0 # Fallback if main game API is down
+                report_df["cost_mil"] = 0.0 
 
-            # 3. Aggregate stats per manager
             stats = []
             for m in manager_order:
                 mgr_data = report_df[report_df["entry_name"] == m]
@@ -314,8 +312,8 @@ def render_live_draft_board():
                     "Avg Time / Pick": format_time(avg_time)
                 })
             
-            # Save the report DataFrame to session state to be rendered
-            st.session_state.report_html = pd.DataFrame(stats)
+            # Save the report DataFrame to session state safely
+            st.session_state.report_df = pd.DataFrame(stats)
 
     draw_board_ui()
 
