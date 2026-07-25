@@ -49,7 +49,7 @@ st.markdown("""
     .manager-header {
         flex-shrink: 0; text-align: center; font-weight: 700; 
         font-size: clamp(0.8rem, 1.1vw, 1.2rem);
-        margin-bottom: 4px; padding-bottom: 4px; border-bottom: 2px solid #00ff87; 
+        margin-bottom: 2px; padding-bottom: 2px; 
     }
     .manager-title-wrap {
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -57,33 +57,30 @@ st.markdown("""
     .team-name {
         font-size: clamp(0.7rem, 0.9vw, 1rem); 
         font-weight: 400; opacity: 0.7; display: block;
-        margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        margin-top: 2px; line-height: 1.2;
+        white-space: normal; word-wrap: break-word; /* Allows long names to wrap */
     }
     
-    /* SCALABLE STATS UNDERNEATH TEAM NAMES */
+    /* MOVED SQUAD VALUE */
+    .squad-value {
+        font-size: clamp(0.75rem, 0.9vw, 1.1rem);
+        font-weight: 700; margin-top: 6px;
+    }
+    .rank-badge {
+        font-size: clamp(0.65rem, 0.8vw, 0.95rem);
+        opacity: 0.9; margin-left: 2px;
+    }
+    
+    /* STATS DIVIDER AND SPACING */
     .manager-stats-top {
         display: flex; justify-content: space-evenly; gap: 4px;
         font-size: clamp(0.6rem, 0.75vw, 0.85rem);
-        font-weight: normal; opacity: 0.9; margin-top: 6px; padding-top: 4px; 
-        border-top: 1px dotted var(--border-color);
+        font-weight: normal; opacity: 0.9; 
+        margin-top: 6px; margin-bottom: 6px; padding-bottom: 6px;
+        border-bottom: 1px solid var(--border-color); /* Subtle divider */
     }
     .manager-stats-top span {
         white-space: nowrap; 
-    }
-    
-    /* SQUAD VALUE WITH RANKING */
-    .manager-stats-bottom {
-        flex-shrink: 0; text-align: center; font-weight: 700;
-        font-size: clamp(0.75rem, 1vw, 1.1rem);
-        margin-top: auto; padding-top: 4px; 
-        border-top: 1px solid var(--border-color); /* Updated to match subtle dividers */
-    }
-    
-    .rank-badge {
-        font-size: clamp(0.6rem, 0.8vw, 0.9rem);
-        opacity: 0.9;
-        font-weight: 500;
-        margin-left: 2px;
     }
     
     .time-slow { color: #ef4444; font-weight: 800; } /* Red */
@@ -178,11 +175,6 @@ def format_time(seconds):
     m, s = divmod(int(seconds), 60)
     return f"{m}m{s}s"
 
-def get_ordinal(n):
-    if 11 <= (n % 100) <= 13:
-        return f"{n}th"
-    return f"{n}" + ["th", "st", "nd", "rd", "th"][min(n % 10, 4)]
-
 # --- UI LAYOUT & SIDEBAR ---
 st.sidebar.header("⚙️ Draft Settings")
 league_id = st.sidebar.number_input("League ID", min_value=1, value=217, step=1)
@@ -209,13 +201,23 @@ refresh_timer = None if is_paused else timedelta(seconds=refresh_seconds)
 @st.fragment(run_every=refresh_timer)
 def render_live_draft_board():
         
-    def draw_board_ui():
-        col_title, col1, col2, col3 = st.columns([1.5, 1, 1.5, 1]) 
+    def draw_board_ui(start_str="--:--", end_str="--:--", dur_str="--"):
+        col_title, col1, col_times, col2, col3 = st.columns([1.5, 0.8, 1.2, 1.2, 0.8]) 
         with col_title:
             st.markdown(f"### ⚽ {league_name}") 
 
         with col1:
             st.metric("Total Picks", f"{max(0, st.session_state.picks_made)} / {st.session_state.total_picks}")
+            
+        with col_times:
+            # Overall Draft Metrics
+            st.markdown(
+                f"<div style='font-size: 0.85rem; line-height: 1.4; opacity: 0.9; margin-top: -0.2rem;'>"
+                f"<strong>Start:</strong> {start_str}<br>"
+                f"<strong>End:</strong> {end_str}<br>"
+                f"<strong>Duration:</strong> {dur_str}</div>", 
+                unsafe_allow_html=True
+            )
         
         with col2:
             if st.session_state.draft_ended:
@@ -226,7 +228,7 @@ def render_live_draft_board():
                 st.write("🚧 **Draft In Progress**")
                 st.progress(st.session_state.picks_made / st.session_state.total_picks)
             else:
-                st.info("🟡 Waiting for draft to begin...")
+                st.info("🟡 Waiting for draft...")
                 
         with col3:
             now_bst = datetime.now(timezone.utc) + timedelta(hours=1)
@@ -243,7 +245,6 @@ def render_live_draft_board():
         draw_board_ui()
         return
 
-    choices_url = f"https://draft.premierleague.com/api/league/{league_id}/details" # fallback for check or choices endpoint
     choices_url = f"https://draft.premierleague.com/api/draft/{league_id}/choices"
     try:
         response = requests.get(choices_url, timeout=10)
@@ -272,6 +273,27 @@ def render_live_draft_board():
     
     current_picks_made = len(made_picks_df)
     current_total_picks = len(choices_df)
+    
+    # Calculate Draft Session Timings
+    start_str, end_str, dur_str = "--:--", "--:--", "--"
+    if not choices_df_raw.empty and "choice_time" in choices_df_raw.columns:
+        valid_times = pd.to_datetime(choices_df_raw["choice_time"]).dropna()
+        if not valid_times.empty:
+            first_t = valid_times.min()
+            last_t = valid_times.max()
+            
+            start_str = (first_t + timedelta(hours=1)).strftime("%H:%M")
+            
+            if current_picks_made == current_total_picks and current_total_picks > 0:
+                end_str = (last_t + timedelta(hours=1)).strftime("%H:%M")
+                dur_secs = (last_t - first_t).total_seconds()
+            else:
+                end_str = "TBD"
+                dur_secs = (datetime.now(timezone.utc) - first_t).total_seconds()
+                
+            h, rem = divmod(int(dur_secs), 3600)
+            m, s = divmod(rem, 60)
+            dur_str = f"{h}h {m}m" if h > 0 else f"{m}m {s}s"
 
     if current_total_picks > 0 and current_picks_made == current_total_picks:
         if not st.session_state.draft_ended:
@@ -357,10 +379,15 @@ def render_live_draft_board():
                         rank_indicator = "🥈"
                     elif rank == 3:
                         rank_indicator = "🥉"
+                    elif rank == len(valid_values_sorted) and len(valid_values_sorted) > 3:
+                        rank_indicator = "🥄" # Wooden spoon for last place
                     else:
-                        rank_indicator = f"({get_ordinal(rank)})"
+                        rank_indicator = ""
                         
-                    val_formatted = f"£{v:.1f}m <span class='rank-badge'>{rank_indicator}</span>"
+                    if rank_indicator:
+                        val_formatted = f"£{v:.1f}m <span class='rank-badge'>{rank_indicator}</span>"
+                    else:
+                        val_formatted = f"£{v:.1f}m"
                 else:
                     val_formatted = "N/A"
 
@@ -383,12 +410,16 @@ def render_live_draft_board():
             
             if m in manager_stats:
                 stats = manager_stats[m]
+                # Moved squad value to the top under team name
+                html_out += f'<div class="squad-value" title="Total Squad Value">💷 {stats["value_html"]}</div>'
+                html_out += '</div>' # close manager-header
+                
                 html_out += '<div class="manager-stats-top">'
                 html_out += f'<span title="Total Picking Time">⏱️ {stats["time_html"]}</span>'
                 html_out += f'<span title="Number of Autopicks">🤖 {stats["auto_html"]}</span>'
                 html_out += '</div>'
-
-            html_out += '</div>'
+            else:
+                html_out += '</div>' # close manager-header if no stats yet
             
             # Loop through positions and insert subtle dividers between them
             for pos_id in [1, 2, 3, 4]:
@@ -397,31 +428,27 @@ def render_live_draft_board():
                 manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
                 picks_formatted = manager_pos_picks["player_name"].tolist()
                 picks_hover = manager_pos_picks["hover_name"].tolist()
-                pick_indices = manager_pos_picks["index"].tolist() # To check for 1st round pick (index 0 for each manager relative to overall draft, or check overall pick index)
+                pick_indices = manager_pos_picks["index"].tolist() 
                 
                 required_spots = ROSTER_LIMITS[pos_id]
                 
                 for i in range(required_spots):
                     if i < len(picks_formatted):
                         global_pick_idx = pick_indices[i]
-                        # Check if this pick belongs to round 1 (index < total managers count, or globally index < len(manager_order))
-                        is_round_one = global_pick_idx < len(manager_order)
+                        # Fix: Check <= len(manager_order) to ensure the last manager's 1st pick is caught
+                        is_round_one = global_pick_idx <= len(manager_order) 
                         
                         card_classes = f"player-card {pos_css_class}"
                         if is_round_one:
                             card_classes += " card-round-1"
                             
-                        html_out += f'<div class="{card_classes}" title="{picks_hover[i]} (Pick #{global_pick_idx + 1})">{picks_formatted[i]}</div>'
+                        html_out += f'<div class="{card_classes}" title="{picks_hover[i]} (Pick #{global_pick_idx})">{picks_formatted[i]}</div>'
                     else:
                         html_out += '<div class="empty-card">-</div>'
                 
                 # Add a subtle divider after each position block except the last one
                 if pos_id < 4:
                     html_out += '<div class="pos-divider"></div>'
-            
-            if m in manager_stats:
-                stats = manager_stats[m]
-                html_out += f'<div class="manager-stats-bottom" title="Total Squad Value">💷 {stats["value_html"]}</div>'
                         
             html_out += '</div>' 
         html_out += '</div></div>'
@@ -430,7 +457,7 @@ def render_live_draft_board():
         st.session_state.picks_made = current_picks_made
         st.session_state.total_picks = current_total_picks
 
-    draw_board_ui()
+    draw_board_ui(start_str, end_str, dur_str)
 
 # --- INITIALIZE ---
 render_live_draft_board()
