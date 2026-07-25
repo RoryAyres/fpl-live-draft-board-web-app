@@ -65,7 +65,6 @@ st.markdown("""
         display: flex; justify-content: space-evenly; gap: 4px;
         font-size: clamp(0.6rem, 0.75vw, 0.85rem);
         font-weight: normal; opacity: 0.9; margin-top: 6px; padding-top: 4px; 
-        border-bottom: 4px solid transparent; /* adds a little spacing below stats since pos titles are gone */
         border-top: 1px dotted var(--border-color);
     }
     .manager-stats-top span {
@@ -76,7 +75,8 @@ st.markdown("""
     .manager-stats-bottom {
         flex-shrink: 0; text-align: center; font-weight: 700;
         font-size: clamp(0.75rem, 1vw, 1.1rem);
-        margin-top: auto; padding-top: 4px; border-top: 2px solid #00ff87;
+        margin-top: auto; padding-top: 4px; 
+        border-top: 1px solid var(--border-color); /* Updated to match subtle dividers */
     }
     
     .rank-badge {
@@ -89,6 +89,12 @@ st.markdown("""
     .time-slow { color: #ef4444; font-weight: 800; } /* Red */
     .auto-high { color: #ef4444; font-weight: 800; } /* Red */
     
+    /* SUBTLE POSITION DIVIDER LINE */
+    .pos-divider {
+        flex-shrink: 0; height: 1px; background-color: var(--border-color);
+        margin: 6px 2px 4px 2px; opacity: 0.6;
+    }
+    
     /* SCALABLE PLAYER CARDS */
     .player-card, .empty-card {
         flex: 1 1 0; display: flex; align-items: center; 
@@ -99,6 +105,12 @@ st.markdown("""
         text-overflow: ellipsis; box-shadow: 0 1px 2px rgba(0,0,0,0.05); position: relative; 
     }
     
+    /* SUBTLE GOLD HIGHLIGHT FOR 1ST ROUND PICKS */
+    .card-round-1 {
+        border-color: #d4af37 !important;
+        background-color: rgba(212, 175, 55, 0.08) !important;
+    }
+
     .card-gk::before, .card-def::before, .card-mid::before, .card-fwd::before {
         content: ""; position: absolute; left: 0; top: 20%; bottom: 20%; width: 3px;
         border-radius: 0 2px 2px 0; opacity: 0.55; 
@@ -231,6 +243,7 @@ def render_live_draft_board():
         draw_board_ui()
         return
 
+    choices_url = f"https://draft.premierleague.com/api/league/{league_id}/details" # fallback for check or choices endpoint
     choices_url = f"https://draft.premierleague.com/api/draft/{league_id}/choices"
     try:
         response = requests.get(choices_url, timeout=10)
@@ -306,7 +319,6 @@ def render_live_draft_board():
             else:
                 report_df["cost_mil"] = 0.0 
 
-            # Pre-calculate to find min and max for highlighting
             raw_stats = {}
             for m in manager_order:
                 mgr_data = report_df[report_df["entry_name"] == m]
@@ -318,8 +330,6 @@ def render_live_draft_board():
 
             valid_times = [s["total_time"] for s in raw_stats.values() if s["total_time"] > 0]
             auto_counts = [s["auto"] for s in raw_stats.values()]
-            
-            # Sort valid values descending to determine rank
             valid_values_sorted = sorted([s["total_value"] for s in raw_stats.values() if s["total_value"] > 0], reverse=True)
             
             max_time = max(valid_times) if valid_times else -1
@@ -333,15 +343,12 @@ def render_live_draft_board():
                 time_formatted = format_time(t)
                 auto_formatted = str(int(a))
 
-                # Highlight slowest time
                 if t > 0 and t == max_time:
                     time_formatted = f'<span class="time-slow" title="Slowest Drafter...">{time_formatted}</span>'
                 
-                # Highlight most autopicks
                 if a > 0 and a == max_auto:
                     auto_formatted = f'<span class="auto-high" title="Most Autopicks!">{auto_formatted}</span>'
                     
-                # Rank squad values with Medals
                 if v > 0:
                     rank = valid_values_sorted.index(v) + 1
                     if rank == 1:
@@ -383,20 +390,34 @@ def render_live_draft_board():
 
             html_out += '</div>'
             
+            # Loop through positions and insert subtle dividers between them
             for pos_id in [1, 2, 3, 4]:
                 pos_css_class = POS_CLASS_MAP[pos_id]
                 
                 manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
                 picks_formatted = manager_pos_picks["player_name"].tolist()
                 picks_hover = manager_pos_picks["hover_name"].tolist()
+                pick_indices = manager_pos_picks["index"].tolist() # To check for 1st round pick (index 0 for each manager relative to overall draft, or check overall pick index)
                 
                 required_spots = ROSTER_LIMITS[pos_id]
                 
                 for i in range(required_spots):
                     if i < len(picks_formatted):
-                        html_out += f'<div class="player-card {pos_css_class}" title="{picks_hover[i]}">{picks_formatted[i]}</div>'
+                        global_pick_idx = pick_indices[i]
+                        # Check if this pick belongs to round 1 (index < total managers count, or globally index < len(manager_order))
+                        is_round_one = global_pick_idx < len(manager_order)
+                        
+                        card_classes = f"player-card {pos_css_class}"
+                        if is_round_one:
+                            card_classes += " card-round-1"
+                            
+                        html_out += f'<div class="{card_classes}" title="{picks_hover[i]} (Pick #{global_pick_idx + 1})">{picks_formatted[i]}</div>'
                     else:
                         html_out += '<div class="empty-card">-</div>'
+                
+                # Add a subtle divider after each position block except the last one
+                if pos_id < 4:
+                    html_out += '<div class="pos-divider"></div>'
             
             if m in manager_stats:
                 stats = manager_stats[m]
