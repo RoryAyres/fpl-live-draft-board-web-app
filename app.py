@@ -17,8 +17,6 @@ if "pause_updates" not in st.session_state:
     st.session_state.pause_updates = False
 if "draft_ended" not in st.session_state:
     st.session_state.draft_ended = False 
-if "report_df" not in st.session_state:
-    st.session_state.report_df = None
 
 # --- CUSTOM CSS FOR "ZOOM BROADCAST" UI WITH RESPONSIVE TEXT SCALING ---
 st.markdown("""
@@ -64,15 +62,22 @@ st.markdown("""
     
     /* SCALABLE STATS UNDERNEATH TEAM NAMES */
     .manager-stats-top {
-        display: flex; justify-content: space-between; 
-        font-size: clamp(0.65rem, 0.8vw, 0.9rem);
-        font-weight: normal; opacity: 0.8; margin-top: 6px; padding-top: 4px; 
+        display: flex; justify-content: space-evenly; gap: 2px;
+        font-size: clamp(0.6rem, 0.75vw, 0.85rem);
+        font-weight: normal; opacity: 0.9; margin-top: 6px; padding-top: 4px; 
         border-top: 1px dotted var(--border-color);
     }
+    .manager-stats-top span {
+        white-space: nowrap; /* Prevents time from splitting across lines */
+    }
+    
+    /* HIGHLIGHTED SQUAD VALUE */
     .manager-stats-bottom {
-        flex-shrink: 0; text-align: center; font-weight: 700;
+        flex-shrink: 0; text-align: center; font-weight: 800;
         font-size: clamp(0.75rem, 1vw, 1.1rem);
-        margin-top: auto; padding-top: 4px; border-top: 2px solid #00ff87;
+        margin-top: auto; padding: 4px 2px; 
+        background-color: #00ff87; color: #111111; 
+        border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     
     /* SCALABLE POSITION TITLES */
@@ -157,7 +162,7 @@ def fetch_league_details(league_id):
 
 def format_time(seconds):
     m, s = divmod(int(seconds), 60)
-    return f"{m}m {s}s"
+    return f"{m}m{s}s"  # Condensed format to save horizontal space
 
 # --- UI LAYOUT & SIDEBAR ---
 st.sidebar.header("⚙️ Draft Settings")
@@ -170,7 +175,6 @@ st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
 if st.sidebar.button("🔄 Manual Refresh", width="stretch"):
     st.session_state.picks_made = -1 
     st.session_state.draft_ended = False 
-    st.session_state.report_df = None
     st.cache_data.clear() 
 
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
@@ -213,10 +217,6 @@ def render_live_draft_board():
         
         if st.session_state.board_html:
             st.markdown(st.session_state.board_html, unsafe_allow_html=True)
-
-        if st.session_state.report_df is not None and not st.session_state.report_df.empty:
-            with st.expander("📊 Post-Draft Report & Analytics", expanded=False):
-                st.dataframe(st.session_state.report_df, width="stretch")
 
     players_df = fetch_players_data()
     if players_df.empty:
@@ -302,7 +302,6 @@ def render_live_draft_board():
             else:
                 report_df["cost_mil"] = 0.0 
 
-            stats_list = []
             for m in manager_order:
                 mgr_data = report_df[report_df["entry_name"] == m]
                 total_time = mgr_data["time_taken"].sum()
@@ -316,17 +315,6 @@ def render_live_draft_board():
                     "avg": format_time(avg_time),
                     "auto": int(auto_picks)
                 }
-
-                stats_list.append({
-                    "Manager": manager_names.get(m, "Unknown"),
-                    "Team Name": m,
-                    "Squad Value (£m)": round(total_value, 1),
-                    "Total Time": format_time(total_time),
-                    "Avg Time / Pick": format_time(avg_time),
-                    "Auto Picks": int(auto_picks)
-                })
-
-            st.session_state.report_df = pd.DataFrame(stats_list)
 
         merged_df = merged_df.sort_values(["element_type", "index"])
 
