@@ -71,7 +71,7 @@ st.markdown("""
         white-space: nowrap; 
     }
     
-    /* REVERTED SQUAD VALUE WITH SUBTLE HIGHLIGHTS */
+    /* SQUAD VALUE WITH SUBTLE HIGHLIGHTS */
     .manager-stats-bottom {
         flex-shrink: 0; text-align: center; font-weight: 700;
         font-size: clamp(0.75rem, 1vw, 1.1rem);
@@ -79,7 +79,6 @@ st.markdown("""
     }
     
     .val-high { color: #22c55e; font-weight: 800; } /* Green */
-    .val-low { color: #ef4444; font-weight: 800; } /* Red */
     .time-fast { color: #22c55e; font-weight: 800; } /* Green */
     .time-slow { color: #ef4444; font-weight: 800; } /* Red */
     
@@ -273,6 +272,14 @@ def render_live_draft_board():
         first_picks = merged_df.groupby("entry_name")["index"].min().sort_values()
         manager_order = first_picks.index.tolist()
         
+        manager_names = (
+            made_picks_df.drop_duplicates("entry_name")
+            .set_index("entry_name")["player_display"]
+            .reindex(manager_order)
+            .fillna("Unknown")
+            .to_dict()
+        )
+        
         manager_stats = {}
         if current_picks_made == current_total_picks and current_total_picks > 0:
             report_df = made_picks_df.sort_values("index").copy()
@@ -309,7 +316,6 @@ def render_live_draft_board():
             
             min_time = min(valid_times) if valid_times else -1
             max_time = max(valid_times) if valid_times else -1
-            min_val = min(valid_values) if valid_values else -1
             max_val = max(valid_values) if valid_values else -1
 
             for m in manager_order:
@@ -327,8 +333,6 @@ def render_live_draft_board():
 
                 if v > 0 and v == max_val:
                     val_formatted = f'<span class="val-high" title="Highest Squad Value!">{val_formatted}</span>'
-                elif v > 0 and v == min_val:
-                    val_formatted = f'<span class="val-low" title="Lowest Squad Value...">{val_formatted}</span>'
 
                 manager_stats[m] = {
                     "value_html": val_formatted,
