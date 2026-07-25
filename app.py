@@ -71,14 +71,20 @@ st.markdown("""
         white-space: nowrap; 
     }
     
-    /* SQUAD VALUE WITH SUBTLE HIGHLIGHTS */
+    /* SQUAD VALUE WITH RANKING */
     .manager-stats-bottom {
         flex-shrink: 0; text-align: center; font-weight: 700;
         font-size: clamp(0.75rem, 1vw, 1.1rem);
         margin-top: auto; padding-top: 4px; border-top: 2px solid #00ff87;
     }
     
-    .val-low { color: #ef4444; font-weight: 800; } /* Red */
+    .rank-badge {
+        font-size: clamp(0.55rem, 0.75vw, 0.85rem);
+        opacity: 0.75;
+        font-weight: 500;
+        margin-left: 2px;
+    }
+    
     .time-slow { color: #ef4444; font-weight: 800; } /* Red */
     .auto-high { color: #ef4444; font-weight: 800; } /* Red */
     
@@ -165,6 +171,11 @@ def fetch_league_details(league_id):
 def format_time(seconds):
     m, s = divmod(int(seconds), 60)
     return f"{m}m{s}s"
+
+def get_ordinal(n):
+    if 11 <= (n % 100) <= 13:
+        return f"{n}th"
+    return f"{n}" + ["th", "st", "nd", "rd", "th"][min(n % 10, 4)]
 
 # --- UI LAYOUT & SIDEBAR ---
 st.sidebar.header("⚙️ Draft Settings")
@@ -312,11 +323,12 @@ def render_live_draft_board():
                 }
 
             valid_times = [s["total_time"] for s in raw_stats.values() if s["total_time"] > 0]
-            valid_values = [s["total_value"] for s in raw_stats.values() if s["total_value"] > 0]
             auto_counts = [s["auto"] for s in raw_stats.values()]
             
+            # Sort valid values descending to determine rank
+            valid_values_sorted = sorted([s["total_value"] for s in raw_stats.values() if s["total_value"] > 0], reverse=True)
+            
             max_time = max(valid_times) if valid_times else -1
-            min_val = min(valid_values) if valid_values else -1
             max_auto = max(auto_counts) if auto_counts else -1
 
             for m in manager_order:
@@ -325,20 +337,23 @@ def render_live_draft_board():
                 a = raw_stats[m]["auto"]
 
                 time_formatted = format_time(t)
-                val_formatted = f"£{v:.1f}m" if v > 0 else "N/A"
                 auto_formatted = str(int(a))
 
                 # Highlight slowest time
                 if t > 0 and t == max_time:
                     time_formatted = f'<span class="time-slow" title="Slowest Drafter...">{time_formatted}</span>'
-
-                # Highlight lowest squad value
-                if v > 0 and v == min_val:
-                    val_formatted = f'<span class="val-low" title="Lowest Squad Value...">{val_formatted}</span>'
                 
-                # Highlight most autopicks (only if they actually had an autopick)
+                # Highlight most autopicks
                 if a > 0 and a == max_auto:
                     auto_formatted = f'<span class="auto-high" title="Most Autopicks!">{auto_formatted}</span>'
+                    
+                # Rank squad values
+                if v > 0:
+                    # `.index()` automatically handles ties by returning the first matching (highest) rank
+                    rank = valid_values_sorted.index(v) + 1
+                    val_formatted = f"£{v:.1f}m <span class='rank-badge'>({get_ordinal(rank)})</span>"
+                else:
+                    val_formatted = "N/A"
 
                 manager_stats[m] = {
                     "value_html": val_formatted,
