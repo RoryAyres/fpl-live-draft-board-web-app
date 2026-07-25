@@ -45,34 +45,35 @@ st.markdown("""
         border: 1px solid var(--border-color); border-radius: 4px; padding: 4px; overflow: hidden;
     }
     
-    /* SCALABLE HEADER & TEAM NAMES */
+    /* TIDIED HEADER & TEAM NAMES SPACING */
     .manager-header {
         flex-shrink: 0; text-align: center; font-weight: 700; 
         font-size: clamp(0.8rem, 1.1vw, 1.2rem);
-        margin-bottom: 2px; padding-bottom: 2px; 
+        margin-bottom: 0px; padding-bottom: 0px; 
     }
     .manager-title-wrap {
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .team-name {
-        font-size: clamp(0.55rem, 0.8vw, 1rem); /* Scales down further before truncating */
+        font-size: clamp(0.55rem, 0.8vw, 1rem); 
         font-weight: 400; opacity: 0.7; display: block;
-        margin-top: 2px; line-height: 1.2;
+        margin-top: 0px; line-height: 1.2;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     
-    /* MOVED SQUAD VALUE */
+    /* SQUAD VALUE & EMOJIS */
     .squad-value {
-        font-size: clamp(0.75rem, 0.9vw, 1.1rem);
-        font-weight: 400; /* Reduced intensity */
-        margin-top: 6px;
+        font-size: clamp(0.7rem, 0.85vw, 1rem); /* Reduced slightly */
+        font-weight: 400; 
+        margin-top: 4px; /* Tightened spacing */
     }
     .squad-value-1st {
-        font-weight: 700; /* Only bold first place */
+        font-weight: 700; 
     }
     .rank-badge {
-        font-size: clamp(0.65rem, 0.8vw, 0.95rem);
-        opacity: 0.9; margin-left: 2px;
+        font-size: clamp(0.85rem, 1.1vw, 1.2rem); /* Increased size */
+        opacity: 1.0; margin-left: 2px;
+        vertical-align: text-bottom;
     }
     
     /* STATS DIVIDER AND SPACING */
@@ -80,8 +81,8 @@ st.markdown("""
         display: flex; justify-content: space-evenly; gap: 4px;
         font-size: clamp(0.6rem, 0.75vw, 0.85rem);
         font-weight: normal; opacity: 0.9; 
-        margin-top: 6px; margin-bottom: 6px; padding-bottom: 6px;
-        border-bottom: 1px solid var(--border-color); /* Subtle divider */
+        margin-top: 4px; margin-bottom: 4px; padding-bottom: 4px; /* Tightened spacing */
+        border-bottom: 1px solid var(--border-color); 
     }
     .manager-stats-top span {
         white-space: nowrap; 
@@ -106,10 +107,11 @@ st.markdown("""
         text-overflow: ellipsis; box-shadow: 0 1px 2px rgba(0,0,0,0.05); position: relative; 
     }
     
-    /* SUBTLE GOLD HIGHLIGHT FOR 1ST ROUND PICKS */
+    /* ENHANCED GOLD HIGHLIGHT FOR 1ST ROUND PICKS */
     .card-round-1 {
-        border-color: #d4af37 !important;
+        border: 1px solid rgba(212, 175, 55, 0.6) !important;
         background-color: rgba(212, 175, 55, 0.08) !important;
+        box-shadow: 0 0 3px rgba(212, 175, 55, 0.4) !important;
     }
 
     .card-gk::before, .card-def::before, .card-mid::before, .card-fwd::before {
@@ -284,10 +286,11 @@ def render_live_draft_board():
             first_t = valid_times.min()
             last_t = valid_times.max()
             
-            start_str = (first_t + timedelta(hours=1)).strftime("%H:%M")
+            # Formatted to include the day and abbreviated month
+            start_str = (first_t + timedelta(hours=1)).strftime("%d %b %H:%M")
             
             if current_picks_made == current_total_picks and current_total_picks > 0:
-                end_str = (last_t + timedelta(hours=1)).strftime("%H:%M")
+                end_str = (last_t + timedelta(hours=1)).strftime("%d %b %H:%M")
                 dur_secs = (last_t - first_t).total_seconds()
             else:
                 end_str = "TBD"
