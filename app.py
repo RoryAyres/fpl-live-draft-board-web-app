@@ -65,6 +65,7 @@ st.markdown("""
         display: flex; justify-content: space-evenly; gap: 4px;
         font-size: clamp(0.6rem, 0.75vw, 0.85rem);
         font-weight: normal; opacity: 0.9; margin-top: 6px; padding-top: 4px; 
+        border-bottom: 4px solid transparent; /* adds a little spacing below stats since pos titles are gone */
         border-top: 1px dotted var(--border-color);
     }
     .manager-stats-top span {
@@ -79,21 +80,14 @@ st.markdown("""
     }
     
     .rank-badge {
-        font-size: clamp(0.55rem, 0.75vw, 0.85rem);
-        opacity: 0.75;
+        font-size: clamp(0.6rem, 0.8vw, 0.9rem);
+        opacity: 0.9;
         font-weight: 500;
         margin-left: 2px;
     }
     
     .time-slow { color: #ef4444; font-weight: 800; } /* Red */
     .auto-high { color: #ef4444; font-weight: 800; } /* Red */
-    
-    /* SCALABLE POSITION TITLES */
-    .pos-title {
-        flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px;
-        font-size: clamp(0.55rem, 0.7vw, 0.8rem);
-        opacity: 0.6; margin: 4px 0 2px 0; border-bottom: 1px solid var(--border-color); text-align: center;
-    }
     
     /* SCALABLE PLAYER CARDS */
     .player-card, .empty-card {
@@ -347,11 +341,19 @@ def render_live_draft_board():
                 if a > 0 and a == max_auto:
                     auto_formatted = f'<span class="auto-high" title="Most Autopicks!">{auto_formatted}</span>'
                     
-                # Rank squad values
+                # Rank squad values with Medals
                 if v > 0:
-                    # `.index()` automatically handles ties by returning the first matching (highest) rank
                     rank = valid_values_sorted.index(v) + 1
-                    val_formatted = f"£{v:.1f}m <span class='rank-badge'>({get_ordinal(rank)})</span>"
+                    if rank == 1:
+                        rank_indicator = "🥇"
+                    elif rank == 2:
+                        rank_indicator = "🥈"
+                    elif rank == 3:
+                        rank_indicator = "🥉"
+                    else:
+                        rank_indicator = f"({get_ordinal(rank)})"
+                        
+                    val_formatted = f"£{v:.1f}m <span class='rank-badge'>{rank_indicator}</span>"
                 else:
                     val_formatted = "N/A"
 
@@ -382,9 +384,7 @@ def render_live_draft_board():
             html_out += '</div>'
             
             for pos_id in [1, 2, 3, 4]:
-                pos_name = POSITION_MAP[pos_id]
                 pos_css_class = POS_CLASS_MAP[pos_id]
-                html_out += f'<div class="pos-title">{pos_name}</div>'
                 
                 manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
                 picks_formatted = manager_pos_picks["player_name"].tolist()
