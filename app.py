@@ -78,9 +78,9 @@ st.markdown("""
         margin-top: auto; padding-top: 4px; border-top: 2px solid #00ff87;
     }
     
-    .val-high { color: #22c55e; font-weight: 800; } /* Green */
-    .time-fast { color: #22c55e; font-weight: 800; } /* Green */
+    .val-low { color: #ef4444; font-weight: 800; } /* Red */
     .time-slow { color: #ef4444; font-weight: 800; } /* Red */
+    .auto-high { color: #ef4444; font-weight: 800; } /* Red */
     
     /* SCALABLE POSITION TITLES */
     .pos-title {
@@ -313,10 +313,11 @@ def render_live_draft_board():
 
             valid_times = [s["total_time"] for s in raw_stats.values() if s["total_time"] > 0]
             valid_values = [s["total_value"] for s in raw_stats.values() if s["total_value"] > 0]
+            auto_counts = [s["auto"] for s in raw_stats.values()]
             
-            min_time = min(valid_times) if valid_times else -1
             max_time = max(valid_times) if valid_times else -1
-            max_val = max(valid_values) if valid_values else -1
+            min_val = min(valid_values) if valid_values else -1
+            max_auto = max(auto_counts) if auto_counts else -1
 
             for m in manager_order:
                 t = raw_stats[m]["total_time"]
@@ -325,19 +326,24 @@ def render_live_draft_board():
 
                 time_formatted = format_time(t)
                 val_formatted = f"£{v:.1f}m" if v > 0 else "N/A"
+                auto_formatted = str(int(a))
 
-                if t > 0 and t == min_time:
-                    time_formatted = f'<span class="time-fast" title="Fastest Drafter!">{time_formatted}</span>'
-                elif t > 0 and t == max_time:
+                # Highlight slowest time
+                if t > 0 and t == max_time:
                     time_formatted = f'<span class="time-slow" title="Slowest Drafter...">{time_formatted}</span>'
 
-                if v > 0 and v == max_val:
-                    val_formatted = f'<span class="val-high" title="Highest Squad Value!">{val_formatted}</span>'
+                # Highlight lowest squad value
+                if v > 0 and v == min_val:
+                    val_formatted = f'<span class="val-low" title="Lowest Squad Value...">{val_formatted}</span>'
+                
+                # Highlight most autopicks (only if they actually had an autopick)
+                if a > 0 and a == max_auto:
+                    auto_formatted = f'<span class="auto-high" title="Most Autopicks!">{auto_formatted}</span>'
 
                 manager_stats[m] = {
                     "value_html": val_formatted,
                     "time_html": time_formatted,
-                    "auto": int(a)
+                    "auto_html": auto_formatted
                 }
 
         merged_df = merged_df.sort_values(["element_type", "index"])
@@ -355,7 +361,7 @@ def render_live_draft_board():
                 stats = manager_stats[m]
                 html_out += '<div class="manager-stats-top">'
                 html_out += f'<span title="Total Picking Time">⏱️ {stats["time_html"]}</span>'
-                html_out += f'<span title="Number of Autopicks">🤖 {stats["auto"]}</span>'
+                html_out += f'<span title="Number of Autopicks">🤖 {stats["auto_html"]}</span>'
                 html_out += '</div>'
 
             html_out += '</div>'
