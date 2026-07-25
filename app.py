@@ -108,6 +108,13 @@ st.markdown("""
         text-overflow: ellipsis;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
+    
+    /* SUBTLE POSITION COLOR CODING (LEFT BORDERS) */
+    .card-gk { border-left: 4px solid #eab308 !important; }  /* Yellow */
+    .card-def { border-left: 4px solid #3b82f6 !important; } /* Blue */
+    .card-mid { border-left: 4px solid #22c55e !important; } /* Green */
+    .card-fwd { border-left: 4px solid #ef4444 !important; } /* Red */
+    
     .empty-card {
         background-color: transparent;
         border: 1px dashed var(--border-color);
@@ -156,20 +163,17 @@ refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, m
 
 st.sidebar.markdown("---")
 
-# The toggle is now permanently tied to our session_state variable
 st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
 
 if st.sidebar.button("🔄 Manual Refresh", use_container_width=True):
-    # Triggers a manual redraw by making the app forget the current pick count
     st.session_state.picks_made = -1 
-    st.cache_data.clear() # Clears background caches for a pristine fetch
+    st.cache_data.clear() 
 
 POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards"}
+POS_CLASS_MAP = {1: "card-gk", 2: "card-def", 3: "card-mid", 4: "card-fwd"}
 ROSTER_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3} 
 
 league_name = fetch_league_name(league_id)
-
-# Dynamically set the timer. If paused, it evaluates to None and the background loop completely stops
 refresh_timer = None if st.session_state.pause_updates else timedelta(seconds=refresh_seconds)
 
 # --- AUTO-REFRESHING LIVE COMPONENT ---
@@ -238,11 +242,10 @@ def render_live_draft_board():
     current_picks_made = len(made_picks_df)
     current_total_picks = len(choices_df)
 
-    # NEW: Automatically stop refreshing if the draft just hit 100% completion
     if current_total_picks > 0 and current_picks_made == current_total_picks:
         if not st.session_state.pause_updates:
             st.session_state.pause_updates = True
-            st.rerun() # Forces the whole script to restart instantly, killing the timer
+            st.rerun() 
 
     if current_picks_made != st.session_state.picks_made or st.session_state.board_html == "":
         
@@ -279,6 +282,7 @@ def render_live_draft_board():
             
             for pos_id in [1, 2, 3, 4]:
                 pos_name = POSITION_MAP[pos_id]
+                pos_css_class = POS_CLASS_MAP[pos_id]
                 html_out += f'<div class="pos-title">{pos_name}</div>'
                 
                 manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
@@ -289,7 +293,8 @@ def render_live_draft_board():
                 
                 for i in range(required_spots):
                     if i < len(picks_formatted):
-                        html_out += f'<div class="player-card" title="{picks_hover[i]}">{picks_formatted[i]}</div>'
+                        # Appending the position-specific CSS class to the card here
+                        html_out += f'<div class="player-card {pos_css_class}" title="{picks_hover[i]}">{picks_formatted[i]}</div>'
                     else:
                         html_out += '<div class="empty-card">-</div>'
                         
