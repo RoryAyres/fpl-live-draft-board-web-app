@@ -55,16 +55,20 @@ st.markdown("""
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .team-name {
-        font-size: clamp(0.7rem, 0.9vw, 1rem); 
+        font-size: clamp(0.55rem, 0.8vw, 1rem); /* Scales down further before truncating */
         font-weight: 400; opacity: 0.7; display: block;
         margin-top: 2px; line-height: 1.2;
-        white-space: normal; word-wrap: break-word; /* Allows long names to wrap */
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     
     /* MOVED SQUAD VALUE */
     .squad-value {
         font-size: clamp(0.75rem, 0.9vw, 1.1rem);
-        font-weight: 700; margin-top: 6px;
+        font-weight: 400; /* Reduced intensity */
+        margin-top: 6px;
+    }
+    .squad-value-1st {
+        font-weight: 700; /* Only bold first place */
     }
     .rank-badge {
         font-size: clamp(0.65rem, 0.8vw, 0.95rem);
@@ -210,7 +214,6 @@ def render_live_draft_board():
             st.metric("Total Picks", f"{max(0, st.session_state.picks_made)} / {st.session_state.total_picks}")
             
         with col_times:
-            # Overall Draft Metrics
             st.markdown(
                 f"<div style='font-size: 0.85rem; line-height: 1.4; opacity: 0.9; margin-top: -0.2rem;'>"
                 f"<strong>Start:</strong> {start_str}<br>"
@@ -274,7 +277,6 @@ def render_live_draft_board():
     current_picks_made = len(made_picks_df)
     current_total_picks = len(choices_df)
     
-    # Calculate Draft Session Timings
     start_str, end_str, dur_str = "--:--", "--:--", "--"
     if not choices_df_raw.empty and "choice_time" in choices_df_raw.columns:
         valid_times = pd.to_datetime(choices_df_raw["choice_time"]).dropna()
@@ -371,16 +373,14 @@ def render_live_draft_board():
                 if a > 0 and a == max_auto:
                     auto_formatted = f'<span class="auto-high" title="Most Autopicks!">{auto_formatted}</span>'
                     
+                val_class = ""
                 if v > 0:
                     rank = valid_values_sorted.index(v) + 1
                     if rank == 1:
                         rank_indicator = "🥇"
-                    elif rank == 2:
-                        rank_indicator = "🥈"
-                    elif rank == 3:
-                        rank_indicator = "🥉"
+                        val_class = " squad-value-1st"
                     elif rank == len(valid_values_sorted) and len(valid_values_sorted) > 3:
-                        rank_indicator = "🥄" # Wooden spoon for last place
+                        rank_indicator = "🥄" 
                     else:
                         rank_indicator = ""
                         
@@ -393,6 +393,7 @@ def render_live_draft_board():
 
                 manager_stats[m] = {
                     "value_html": val_formatted,
+                    "val_class": val_class,
                     "time_html": time_formatted,
                     "auto_html": auto_formatted
                 }
@@ -410,18 +411,16 @@ def render_live_draft_board():
             
             if m in manager_stats:
                 stats = manager_stats[m]
-                # Moved squad value to the top under team name
-                html_out += f'<div class="squad-value" title="Total Squad Value">💷 {stats["value_html"]}</div>'
-                html_out += '</div>' # close manager-header
+                html_out += f'<div class="squad-value{stats["val_class"]}" title="Total Squad Value">{stats["value_html"]}</div>'
+                html_out += '</div>' 
                 
                 html_out += '<div class="manager-stats-top">'
                 html_out += f'<span title="Total Picking Time">⏱️ {stats["time_html"]}</span>'
                 html_out += f'<span title="Number of Autopicks">🤖 {stats["auto_html"]}</span>'
                 html_out += '</div>'
             else:
-                html_out += '</div>' # close manager-header if no stats yet
+                html_out += '</div>' 
             
-            # Loop through positions and insert subtle dividers between them
             for pos_id in [1, 2, 3, 4]:
                 pos_css_class = POS_CLASS_MAP[pos_id]
                 
@@ -435,7 +434,6 @@ def render_live_draft_board():
                 for i in range(required_spots):
                     if i < len(picks_formatted):
                         global_pick_idx = pick_indices[i]
-                        # Fix: Check <= len(manager_order) to ensure the last manager's 1st pick is caught
                         is_round_one = global_pick_idx <= len(manager_order) 
                         
                         card_classes = f"player-card {pos_css_class}"
@@ -446,7 +444,6 @@ def render_live_draft_board():
                     else:
                         html_out += '<div class="empty-card">-</div>'
                 
-                # Add a subtle divider after each position block except the last one
                 if pos_id < 4:
                     html_out += '<div class="pos-divider"></div>'
                         
