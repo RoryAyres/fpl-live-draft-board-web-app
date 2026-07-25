@@ -50,30 +50,36 @@ st.markdown("""
     .manager-title-wrap {
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
+    
+    /* Increased team name font size for legibility */
     .team-name {
-        font-size: 0.6rem; font-weight: 400; opacity: 0.7; display: block;
-        margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        font-size: 0.7rem; font-weight: 500; opacity: 0.85; display: block;
+        margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     
+    /* Increased stats text sizes and legibility */
     .manager-stats-top {
-        display: flex; justify-content: space-between; font-size: 0.55rem; 
-        font-weight: normal; opacity: 0.8; margin-top: 6px; padding-top: 4px; 
+        display: flex; justify-content: space-between; font-size: 0.65rem; 
+        font-weight: 600; opacity: 0.95; margin-top: 6px; padding-top: 4px; 
         border-top: 1px dotted var(--border-color);
     }
     .manager-stats-bottom {
-        flex-shrink: 0; text-align: center; font-size: 0.7rem; font-weight: 700;
+        flex-shrink: 0; text-align: center; font-size: 0.8rem; font-weight: 700;
         margin-top: auto; padding-top: 4px; border-top: 2px solid #00ff87;
     }
     
-    .pos-title {
-        flex-shrink: 0; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.5px;
-        opacity: 0.6; margin: 4px 0 2px 0; border-bottom: 1px solid var(--border-color); text-align: center;
+    /* Global Section Divider styling */
+    .section-divider {
+        flex-shrink: 0; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px;
+        font-weight: 700; opacity: 0.7; margin: 5px 0 3px 0; padding: 2px 0;
+        background-color: rgba(255,255,255,0.03); border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color); text-align: center;
     }
     
     .player-card, .empty-card {
         flex: 1 1 0; display: flex; align-items: center; 
         background-color: var(--background-color); border: 1px solid var(--border-color);
-        padding: 0 4px 0 8px; margin-bottom: 3px; border-radius: 3px;
+        padding: 0 4px 0 8px; margin-bottom: 2px; border-radius: 3px;
         font-size: 0.75rem; font-weight: 500; white-space: nowrap; overflow: hidden;
         text-overflow: ellipsis; box-shadow: 0 1px 2px rgba(0,0,0,0.05); position: relative; 
     }
@@ -124,7 +130,6 @@ def fetch_main_game_prices():
     except Exception:
         return pd.DataFrame()
 
-# Updated to fetch the scheduled start time (draft_dt)
 @st.cache_data(ttl=3600)
 def fetch_league_details(league_id):
     league_details_url = f"https://draft.premierleague.com/api/league/{league_id}/details"
@@ -159,7 +164,6 @@ POSITION_MAP = {1: "Goalkeepers", 2: "Defenders", 3: "Midfielders", 4: "Forwards
 POS_CLASS_MAP = {1: "card-gk", 2: "card-def", 3: "card-mid", 4: "card-fwd"}
 ROSTER_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3} 
 
-# Fetch both the name and the start time
 league_name, draft_start_dt = fetch_league_details(league_id)
 
 is_paused = st.session_state.pause_updates or st.session_state.draft_ended
@@ -257,25 +261,17 @@ def render_live_draft_board():
             .to_dict()
         )
         
-        # PRE-CALCULATE POST-DRAFT STATS
         manager_stats = {}
         if current_picks_made == current_total_picks and current_total_picks > 0:
             report_df = made_picks_df.sort_values("index").copy()
             report_df["choice_time_dt"] = pd.to_datetime(report_df["choice_time"])
-            
-            # Calculate standard pick times
             report_df["time_taken"] = report_df["choice_time_dt"].diff().dt.total_seconds()
             
-            # Handle the very first pick using the API's scheduled start time
             if draft_start_dt:
                 api_start_time = pd.to_datetime(draft_start_dt)
                 first_pick_duration = (report_df["choice_time_dt"].iloc[0] - api_start_time).total_seconds()
-                
-                # Smart fallback: If the draft started late (meaning the calculated time is > 90s) 
-                # or negative, cap it at a standard 60 seconds so it doesn't skew the averages
                 if first_pick_duration > 90 or first_pick_duration < 0:
                     first_pick_duration = 60
-                    
                 report_df.iloc[0, report_df.columns.get_loc('time_taken')] = first_pick_duration
             else:
                 report_df["time_taken"] = report_df["time_taken"].fillna(60) 
@@ -321,10 +317,13 @@ def render_live_draft_board():
 
             html_out += '</div>'
             
+            # Render position blocks cleanly down the column without repeated text labels
             for pos_id in [1, 2, 3, 4]:
                 pos_name = POSITION_MAP[pos_id]
                 pos_css_class = POS_CLASS_MAP[pos_id]
-                html_out += f'<div class="pos-title">{pos_name}</div>'
+                
+                # Only inject a clean visual divider row for the positions
+                html_out += f'<div class="section-divider">{pos_name}</div>'
                 
                 manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
                 picks_formatted = manager_pos_picks["player_name"].tolist()
