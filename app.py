@@ -117,7 +117,7 @@ def fetch_players_data():
         team_map = dict(zip(teams_df["id"], teams_df["short_name"]))
         players_df["team_name"] = players_df["team"].map(team_map)
         return players_df
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
@@ -157,7 +157,7 @@ refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, m
 st.sidebar.markdown("---")
 st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
 
-if st.sidebar.button("🔄 Manual Refresh", use_container_width=True):
+if st.sidebar.button("🔄 Manual Refresh", width="stretch"):
     st.session_state.picks_made = -1 
     st.session_state.draft_ended = False 
     st.cache_data.clear() 
@@ -213,7 +213,7 @@ def render_live_draft_board():
         response = requests.get(choices_url, timeout=10)
         response.raise_for_status()
         choices_data = response.json()
-    except Exception as e:
+    except Exception:
         st.toast("⚠️ FPL API blip. Keeping previous board on screen while retrying...")
         draw_board_ui()
         return
@@ -286,32 +286,27 @@ def render_live_draft_board():
 
         merged_df = merged_df.sort_values(["element_type", "index"])
 
-        # BUILD HTML
+        # BUILD HTML (No leading spaces inside strings to prevent Markdown parsing)
         html_out = '<div class="draft-board-wrapper"><div class="draft-container">'
 
         for m in manager_order:
-            html_out += f'''
-            <div class="manager-col">
-                <div class="manager-header" title="{manager_names[m]}">
-                    <div class="manager-title-wrap">{manager_names[m]}</div>
-                    <span class="team-name" title="{m}">{m}</span>
-            '''
+            html_out += f'<div class="manager-col">'
+            html_out += f'<div class="manager-header" title="{manager_names[m]}">'
+            html_out += f'<div class="manager-title-wrap">{manager_names[m]}</div>'
+            html_out += f'<span class="team-name" title="{m}">{m}</span>'
             
-            # Inject expandable stats securely inside the header if draft is completed
             if m in manager_stats:
                 stats = manager_stats[m]
-                html_out += f'''
-                    <details class="stats-expander">
-                        <summary>📊 Stats</summary>
-                        <div class="stats-content">
-                            <b>Value:</b> {stats['value']}<br>
-                            <b>Total Time:</b> {stats['total']}<br>
-                            <b>Avg Pick:</b> {stats['avg']}
-                        </div>
-                    </details>
-                '''
+                html_out += f'<details class="stats-expander">'
+                html_out += f'<summary>📊 Stats</summary>'
+                html_out += f'<div class="stats-content">'
+                html_out += f'<b>Value:</b> {stats["value"]}<br>'
+                html_out += f'<b>Total Time:</b> {stats["total"]}<br>'
+                html_out += f'<b>Avg Pick:</b> {stats["avg"]}'
+                html_out += f'</div>'
+                html_out += f'</details>'
 
-            html_out += '</div>' # Close manager-header
+            html_out += '</div>'
             
             for pos_id in [1, 2, 3, 4]:
                 pos_name = POSITION_MAP[pos_id]
