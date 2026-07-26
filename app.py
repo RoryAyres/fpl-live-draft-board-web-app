@@ -215,7 +215,7 @@ def render_landing_page():
         st.info(
             "💡 **Where to find your League ID?**\n\n"
             "A league admin can quickly copy this from their **Edit League Admin** URL:\n\n"
-            "`https://draft.premierleague.com/league/YOUR_LEAGUE_ID/edit`"[cite: 1]
+            "`https://draft.premierleague.com/league/YOUR_LEAGUE_ID/edit`"
         )
         
         if st.button("🚀 Load Draft Board", use_container_width=True, type="primary"):
@@ -261,7 +261,7 @@ else:
     prev_champs_input = st.sidebar.text_input(
         "🏆 Previous Champions", 
         placeholder="Comma-separated names...", 
-        help="Enter exact Manager or Team names separated by commas to award them a gold star on the board."[cite: 1]
+        help="Enter exact Manager or Team names separated by commas to award them a gold star on the board."
     )
     prev_champs_list = [name.strip().lower() for name in prev_champs_input.split(",") if name.strip()]
 
@@ -422,12 +422,11 @@ else:
             st.subheader("⏪ Draft Replay")
             
             if current_picks_made > 0:
-                # Play / Stop control buttons
                 col_btn1, col_btn2 = st.columns(2)
                 with col_btn1:
                     if st.button("▶️ Play", use_container_width=True):
                         if st.session_state.replay_pick_slider >= current_picks_made:
-                            st.session_state.replay_pick_slider = 0 # Loop back to start if at the end
+                            st.session_state.replay_pick_slider = 0 
                         st.session_state.is_playing = True
                         st.rerun()
                 with col_btn2:
@@ -446,10 +445,9 @@ else:
                 display_picks = 0
                 st.info("No picks made yet.")
 
-        # Handle auto-play iteration stepping
         if st.session_state.is_playing:
             if st.session_state.replay_pick_slider < current_picks_made:
-                time.sleep(1.0) # 1 second interval between automatic picks
+                time.sleep(1.0) 
                 st.session_state.replay_pick_slider += 1
                 st.rerun()
             else:
