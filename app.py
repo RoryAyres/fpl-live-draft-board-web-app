@@ -70,10 +70,14 @@ st.markdown("""
         font-weight: 400; 
         margin-top: 4px; 
     }
+    .squad-value-1st {
+        font-weight: 700; 
+    }
     .rank-badge {
-        font-size: clamp(0.85rem, 1.1vw, 1.2rem); 
-        opacity: 1.0; margin-left: 2px;
-        vertical-align: text-bottom;
+        font-size: clamp(0.7rem, 0.85vw, 1rem); /* Matched to squad value size to prevent alignment issues */
+        opacity: 1.0; 
+        margin-left: 2px;
+        vertical-align: baseline; /* Ensures it doesn't push the line height up */
     }
     
     /* STATS DIVIDER AND SPACING */
@@ -384,10 +388,12 @@ def render_live_draft_board():
                 if a > 0 and a == max_auto:
                     auto_formatted = f'<span class="auto-high" title="Most Autopicks!">{auto_formatted}</span>'
                     
+                val_class = ""
                 if v > 0:
                     rank = valid_values_sorted.index(v) + 1
                     if rank == 1:
                         rank_indicator = "🥇"
+                        val_class = " squad-value-1st"
                     elif rank == len(valid_values_sorted) and len(valid_values_sorted) > 3:
                         rank_indicator = "🥄" 
                     else:
@@ -402,6 +408,7 @@ def render_live_draft_board():
 
                 manager_stats[m] = {
                     "value_html": val_formatted,
+                    "val_class": val_class,
                     "time_html": time_formatted,
                     "auto_html": auto_formatted
                 }
@@ -414,7 +421,6 @@ def render_live_draft_board():
         for m in manager_order:
             html_out += '<div class="manager-col">'
             
-            # Check for champion status
             mgr_name_display = manager_names.get(m, "Unknown")
             is_champ = (m.lower() in prev_champs_list) or (mgr_name_display.lower() in prev_champs_list)
             champ_star = " ⭐" if is_champ else ""
@@ -425,8 +431,7 @@ def render_live_draft_board():
             
             if m in manager_stats:
                 stats = manager_stats[m]
-                # Bold logic removed from CSS and Python entirely per request
-                html_out += f'<div class="squad-value" title="Total Squad Value">{stats["value_html"]}</div>'
+                html_out += f'<div class="squad-value{stats["val_class"]}" title="Total Squad Value">{stats["value_html"]}</div>'
                 html_out += '</div>' 
                 
                 html_out += '<div class="manager-stats-top">'
