@@ -175,6 +175,11 @@ def fetch_league_details(league_id):
     league_details_url = f"https://draft.premierleague.com/api/league/{league_id}/details"
     try:
         response = requests.get(league_details_url, timeout=10)
+        
+        # Check if the league exists
+        if response.status_code == 404:
+            return None, None
+            
         response.raise_for_status()
         data = response.json()
         league_name = data.get("league", {}).get("name", f"League {league_id}")
@@ -221,6 +226,17 @@ if not st.session_state.active_league_id:
     render_landing_page()
 else:
     league_id = st.session_state.active_league_id
+    league_name, draft_start_dt = fetch_league_details(league_id)
+    
+    # --- INVALID LEAGUE HANDLER ---
+    if league_name is None:
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.error("❌ **League does not exist.** Please check your League ID and try again.")
+            if st.button("👈 Return to Landing Page", use_container_width=True):
+                st.session_state.active_league_id = None
+                st.rerun()
+        st.stop()
 
     # --- SIDEBAR CONTROLS ---
     st.sidebar.header("⚙️ Draft Settings")
@@ -248,7 +264,6 @@ else:
         st.session_state.draft_ended = False 
         st.cache_data.clear() 
 
-    league_name, draft_start_dt = fetch_league_details(league_id)
     is_paused = st.session_state.pause_updates or st.session_state.draft_ended
     refresh_timer = None if is_paused else timedelta(seconds=refresh_seconds)
 
@@ -304,17 +319,44 @@ else:
             response = requests.get(choices_url, timeout=10)
             response.raise_for_status()
             choices_data = response.json()
-        except Exception:
+        except requests.exceptions.RequestException:
             st.toast("⚠️ FPL API blip. Keeping previous board on screen while retrying...")
             draw_board_ui()
             return
-
-        if isinstance(choices_data, dict) and choices_data.get("detail") == "No League matches the given query.":
-            st.error(f"❌ Invalid League ID: {league_id}. Click 'Switch League' in the sidebar to try another.")
-            return
-
+            
         choices = choices_data.get("choices", [])
-        if not choices or pd.DataFrame(choices)["element"].isna().all():
+        is_pre_draft = False
+        
+        # Determine if we are in a pre-draft state
+        if not choices:
+            is_pre_draft = True
+        else:
+            df_choices = pd.DataFrame(choices)
+            if "element" not in df_choices.columns or df_choices["element"].isna().all():
+                is_pre_draft = True
+        
+        # --- PRE-DRAFT & COUNTDOWN HANDLER ---
+        if is_pre_draft:
+            now_utc = datetime.now(timezone.utc)
+            if draft_start_dt:
+                draft_time = pd.to_datetime(draft_start_dt)
+                
+                if draft_time > now_utc:
+                    time_diff = draft_time - now_utc
+                    days = time_diff.days
+                    seconds = time_diff.seconds
+                    hours = seconds // 3600
+                    minutes = (seconds % 3600) // 60
+                    
+                    st.info(f"⏳ **Draft has not started yet.** Scheduled for: {draft_time.strftime('%d %b %Y %H:%M')} (UTC)")
+                    
+                    st.markdown("### ⏲️ Time Until Draft")
+                    col_d, col_h, col_m, _ = st.columns([1, 1, 1, 3])
+                    col_d.metric("Days", days)
+                    col_h.metric("Hours", hours)
+                    col_m.metric("Minutes", minutes)
+                    return
+                    
             st.info("🟡 Draft room is open! Waiting for the first pick to be made...")
             return
 
