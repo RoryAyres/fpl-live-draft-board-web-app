@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+import time
 from datetime import datetime, timezone, timedelta
 
 # --- PAGE CONFIGURATION ---
@@ -23,6 +24,8 @@ if "max_picks_seen" not in st.session_state:
     st.session_state.max_picks_seen = 0
 if "last_rendered_picks" not in st.session_state:
     st.session_state.last_rendered_picks = -1
+if "is_playing" not in st.session_state:
+    st.session_state.is_playing = False
 
 # --- CUSTOM CSS FOR "ZOOM BROADCAST" UI WITH RESPONSIVE TEXT SCALING ---
 st.markdown("""
@@ -179,11 +182,8 @@ def fetch_league_details(league_id):
     league_details_url = f"https://draft.premierleague.com/api/league/{league_id}/details"
     try:
         response = requests.get(league_details_url, timeout=10)
-        
-        # Check if the league exists
         if response.status_code == 404:
             return None, None
-            
         response.raise_for_status()
         data = response.json()
         league_name = data.get("league", {}).get("name", f"League {league_id}")
@@ -215,7 +215,7 @@ def render_landing_page():
         st.info(
             "💡 **Where to find your League ID?**\n\n"
             "A league admin can quickly copy this from their **Edit League Admin** URL:\n\n"
-            "`https://draft.premierleague.com/league/YOUR_LEAGUE_ID/edit`"
+            "`https://draft.premierleague.com/league/YOUR_LEAGUE_ID/edit`"[cite: 1]
         )
         
         if st.button("🚀 Load Draft Board", use_container_width=True, type="primary"):
@@ -225,6 +225,7 @@ def render_landing_page():
             st.session_state.draft_ended = False
             st.session_state.max_picks_seen = 0
             st.session_state.last_rendered_picks = -1
+            st.session_state.is_playing = False
             st.rerun()
 
 # --- MAIN APP ROUTING & DRAFT BOARD VIEW ---
@@ -241,6 +242,7 @@ else:
             st.error("❌ **League does not exist.** Please check your League ID and try again.")
             if st.button("👈 Return to Landing Page", use_container_width=True):
                 st.session_state.active_league_id = None
+                st.session_state.is_playing = False
                 st.rerun()
         st.stop()
 
@@ -250,6 +252,7 @@ else:
     
     if st.sidebar.button("👈 Switch League", use_container_width=True):
         st.session_state.active_league_id = None
+        st.session_state.is_playing = False
         st.rerun()
 
     st.sidebar.markdown("---")
@@ -258,7 +261,7 @@ else:
     prev_champs_input = st.sidebar.text_input(
         "🏆 Previous Champions", 
         placeholder="Comma-separated names...", 
-        help="Enter exact Manager or Team names separated by commas to award them a gold star on the board."
+        help="Enter exact Manager or Team names separated by commas to award them a gold star on the board."[cite: 1]
     )
     prev_champs_list = [name.strip().lower() for name in prev_champs_input.split(",") if name.strip()]
 
@@ -269,9 +272,10 @@ else:
         st.session_state.picks_made = -1 
         st.session_state.draft_ended = False 
         st.session_state.last_rendered_picks = -1
+        st.session_state.is_playing = False
         st.cache_data.clear() 
 
-    is_paused = st.session_state.pause_updates or st.session_state.draft_ended
+    is_paused = st.session_state.pause_updates or st.session_state.draft_ended or st.session_state.is_playing
     refresh_timer = None if is_paused else timedelta(seconds=refresh_seconds)
 
     # --- AUTO-REFRESHING LIVE COMPONENT ---
@@ -284,7 +288,6 @@ else:
                 st.markdown(f"### ⚽ {league_name}") 
 
             with col1:
-                # Update metric to show the slider's display count during replay
                 st.metric("Picks Shown", f"{display_count} / {st.session_state.total_picks}")
                 
             with col_times:
@@ -299,6 +302,8 @@ else:
             with col2:
                 if st.session_state.draft_ended:
                     st.success("✅ Draft Complete!")
+                elif st.session_state.is_playing:
+                    st.info("▶️ Replay Playing...")
                 elif st.session_state.pause_updates:
                     st.warning("⏸️ Updates Paused")
                 elif st.session_state.total_picks > 0:
@@ -335,7 +340,6 @@ else:
         choices = choices_data.get("choices", [])
         is_pre_draft = False
         
-        # Determine if we are in a pre-draft state
         if not choices:
             is_pre_draft = True
         else:
@@ -402,25 +406,35 @@ else:
         if current_total_picks > 0 and current_picks_made == current_total_picks:
             if not st.session_state.draft_ended:
                 st.session_state.draft_ended = True
-                st.rerun()
 
-        # --- DRAFT REPLAY SLIDER LOGIC ---
-        # Initialize or snap the slider state to track live progress
+        # --- DRAFT REPLAY SLIDER & AUTO-PLAY LOGIC ---
         if "replay_pick_slider" not in st.session_state:
             st.session_state.replay_pick_slider = current_picks_made
             st.session_state.max_picks_seen = current_picks_made
             
-        # If the draft advances, and the user was watching live (slider pinned to max), auto-advance it
         if current_picks_made > st.session_state.max_picks_seen:
             if st.session_state.replay_pick_slider == st.session_state.max_picks_seen:
                 st.session_state.replay_pick_slider = current_picks_made
             st.session_state.max_picks_seen = current_picks_made
 
-        # Render the slider in the sidebar (will auto-refresh safely inside the fragment)
         with st.sidebar:
             st.markdown("---")
             st.subheader("⏪ Draft Replay")
+            
             if current_picks_made > 0:
+                # Play / Stop control buttons
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    if st.button("▶️ Play", use_container_width=True):
+                        if st.session_state.replay_pick_slider >= current_picks_made:
+                            st.session_state.replay_pick_slider = 0 # Loop back to start if at the end
+                        st.session_state.is_playing = True
+                        st.rerun()
+                with col_btn2:
+                    if st.button("⏹️ Stop", use_container_width=True):
+                        st.session_state.is_playing = False
+                        st.rerun()
+
                 display_picks = st.slider(
                     "Show Picks Up To", 
                     min_value=0, 
@@ -432,14 +446,19 @@ else:
                 display_picks = 0
                 st.info("No picks made yet.")
 
-        # Re-render HTML if new picks arrived, or if the user moved the slider
+        # Handle auto-play iteration stepping
+        if st.session_state.is_playing:
+            if st.session_state.replay_pick_slider < current_picks_made:
+                time.sleep(1.0) # 1 second interval between automatic picks
+                st.session_state.replay_pick_slider += 1
+                st.rerun()
+            else:
+                st.session_state.is_playing = False
+
         if display_picks != st.session_state.last_rendered_picks or st.session_state.board_html == "":
             
-            # Truncate picks for replay functionality
             display_picks_df = made_picks_df.head(display_picks).copy()
             
-            # Extract Manager orders and names definitively from the RAW choices array 
-            # so headers persist even if display_picks == 0
             manager_info_df = choices_df_raw.drop_duplicates("entry_name").copy()
             manager_info_df["manager_display"] = manager_info_df["player_first_name"].fillna('') + " " + manager_info_df["player_last_name"].fillna('').str[:1]
             manager_names = manager_info_df.set_index("entry_name")["manager_display"].to_dict()
@@ -452,10 +471,8 @@ else:
                 merged_df["player_name"] = merged_df["web_name"] + " <span class='pl-team'>(" + merged_df["team_name"] + ")</span>"
                 merged_df["hover_name"] = merged_df["web_name"] + " (" + merged_df["team_name"] + ")"
             else:
-                # Create an empty dataframe with correct columns if 0 picks selected
                 merged_df = pd.DataFrame(columns=["entry_name", "element_type", "index", "player_name", "hover_name"])
 
-            # Post Draft Analytics (Only calculate & show if fully live at 100% completion)
             manager_stats = {}
             if display_picks == current_total_picks and current_total_picks > 0:
                 report_df = display_picks_df.sort_values("index").copy()
