@@ -1,0 +1,24 @@
+# FPL Live Draft Board - Project Context & Architecture
+
+## 1. Overview & Purpose
+- A real-time, broadcast-style Streamlit web application built for the Premier League (FPL) Draft game mode.
+- Designed to display a live "war room" view during a draft, showing manager columns, positional player cards, team sheets, squad values, and draft analytics.
+
+## 2. Technical Stack & Architecture
+- Framework: Streamlit (configured with wide layout and collapsed sidebar).
+- Core Dependencies: streamlit, pandas, requests.
+- Architecture Pattern: 
+  - Uses Streamlit fragments (`@st.fragment`) with dynamic auto-refresh intervals configured via sidebar slider (3 to 30 seconds).
+  - Caches foundational league details, player metadata, and player prices using `@st.cache_data` (TTL = 3600s).
+  - Employs responsive CSS layout with CSS flexbox and scalable `clamp()` typography to maintain consistency across hardware configurations (safeguarded for up to 16-team leagues with horizontal scrolling).
+
+## 3. Core Features & Functionality
+- Live Tracking: Queries the official FPL Draft API (`/api/draft/{league_id}/choices`) to monitor pick progress, displaying progress bars, pick counts, and synchronization times.
+- Manager Columns: Side-by-side columns ordered chronologically by each manager's first draft pick.
+- Past Champions Integration: A sidebar text input allows users to input comma-separated manager/team names to display a gold star (⭐) next to past winners.
+- Positional Grouping & Color Coding: Cards are grouped into Goalkeepers (2), Defenders (5), Midfielders (5), and Forwards (3) with distinct positional left-border color accents (Yellow, Blue, Green, Red).
+- Round 1 Highlighting: Every manager's first-round selection features a subtle gold border and background highlight (`.card-round-1`).
+- Post-Draft Analytics (Hidden during active draft, revealed at 100% completion):
+  - Squad Valuations: Evaluates total squad costs using main-game player prices from the primary FPL API. Ranks squads, highlighting 1st place with 🥇 and last place with 🥄.
+  - Draft Timings & Autopicks: Tracks total time spent drafting per manager, flags the slowest drafter in red text, and tracks total automated picks (🤖), highlighting the most automated picks in red.
+  - Overall Session Metrics: Displays global draft start date/time, end date/time, and total duration at the top panel.
