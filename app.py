@@ -35,12 +35,15 @@ st.markdown("""
     [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
     h3 { margin-top: 0px !important; margin-bottom: 0px !important; padding-bottom: 0px !important; }
     
-    .draft-board-wrapper { width: 100%; overflow: hidden; margin-bottom: 20px;}
+    .draft-board-wrapper { width: 100%; margin-bottom: 20px; }
     .draft-container {
         display: flex; gap: 4px; width: 100%; height: calc(100vh - 200px); 
+        overflow-x: auto; /* Safeguard for 16-team leagues */
+        padding-bottom: 8px; /* Room for scrollbar */
     }
     .manager-col {
         flex: 1 1 0; display: flex; flex-direction: column; 
+        min-width: 110px; /* Prevents text illegibility in 16-team leagues */
         background-color: var(--secondary-background-color);
         border: 1px solid var(--border-color); border-radius: 4px; padding: 4px; overflow: hidden;
     }
@@ -67,11 +70,10 @@ st.markdown("""
         font-weight: 400; 
         margin-top: 4px; 
     }
-    .squad-value-1st {
-        font-weight: 700; 
-    }
     .rank-badge {
+        font-size: clamp(0.85rem, 1.1vw, 1.2rem); 
         opacity: 1.0; margin-left: 2px;
+        vertical-align: text-bottom;
     }
     
     /* STATS DIVIDER AND SPACING */
@@ -183,6 +185,15 @@ def format_time(seconds):
 st.sidebar.header("⚙️ Draft Settings")
 league_id = st.sidebar.number_input("League ID", min_value=1, value=217, step=1)
 refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, max_value=30, value=5)
+
+st.sidebar.markdown("---")
+# New Sidebar input for community functionality
+prev_champs_input = st.sidebar.text_input(
+    "🏆 Previous Champions", 
+    placeholder="Comma-separated names...", 
+    help="Enter exact Manager or Team names separated by commas to award them a gold star on the board."
+)
+prev_champs_list = [name.strip().lower() for name in prev_champs_input.split(",") if name.strip()]
 
 st.sidebar.markdown("---")
 st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
@@ -373,12 +384,10 @@ def render_live_draft_board():
                 if a > 0 and a == max_auto:
                     auto_formatted = f'<span class="auto-high" title="Most Autopicks!">{auto_formatted}</span>'
                     
-                val_class = ""
                 if v > 0:
                     rank = valid_values_sorted.index(v) + 1
                     if rank == 1:
                         rank_indicator = "🥇"
-                        val_class = " squad-value-1st"
                     elif rank == len(valid_values_sorted) and len(valid_values_sorted) > 3:
                         rank_indicator = "🥄" 
                     else:
@@ -393,7 +402,6 @@ def render_live_draft_board():
 
                 manager_stats[m] = {
                     "value_html": val_formatted,
-                    "val_class": val_class,
                     "time_html": time_formatted,
                     "auto_html": auto_formatted
                 }
@@ -405,13 +413,20 @@ def render_live_draft_board():
 
         for m in manager_order:
             html_out += '<div class="manager-col">'
-            html_out += f'<div class="manager-header" title="{manager_names[m]}">'
-            html_out += f'<div class="manager-title-wrap">{manager_names[m]}</div>'
+            
+            # Check for champion status
+            mgr_name_display = manager_names.get(m, "Unknown")
+            is_champ = (m.lower() in prev_champs_list) or (mgr_name_display.lower() in prev_champs_list)
+            champ_star = " ⭐" if is_champ else ""
+            
+            html_out += f'<div class="manager-header" title="{mgr_name_display}">'
+            html_out += f'<div class="manager-title-wrap">{mgr_name_display}{champ_star}</div>'
             html_out += f'<span class="team-name" title="{m}">{m}</span>'
             
             if m in manager_stats:
                 stats = manager_stats[m]
-                html_out += f'<div class="squad-value{stats["val_class"]}" title="Total Squad Value">{stats["value_html"]}</div>'
+                # Bold logic removed from CSS and Python entirely per request
+                html_out += f'<div class="squad-value" title="Total Squad Value">{stats["value_html"]}</div>'
                 html_out += '</div>' 
                 
                 html_out += '<div class="manager-stats-top">'
