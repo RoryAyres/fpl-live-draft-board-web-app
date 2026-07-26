@@ -19,6 +19,10 @@ if "pause_updates" not in st.session_state:
     st.session_state.pause_updates = False
 if "draft_ended" not in st.session_state:
     st.session_state.draft_ended = False 
+if "max_picks_seen" not in st.session_state:
+    st.session_state.max_picks_seen = 0
+if "last_rendered_picks" not in st.session_state:
+    st.session_state.last_rendered_picks = -1
 
 # --- CUSTOM CSS FOR "ZOOM BROADCAST" UI WITH RESPONSIVE TEXT SCALING ---
 st.markdown("""
@@ -219,6 +223,8 @@ def render_landing_page():
             st.session_state.picks_made = 0
             st.session_state.board_html = ""
             st.session_state.draft_ended = False
+            st.session_state.max_picks_seen = 0
+            st.session_state.last_rendered_picks = -1
             st.rerun()
 
 # --- MAIN APP ROUTING & DRAFT BOARD VIEW ---
@@ -262,6 +268,7 @@ else:
     if st.sidebar.button("🔄 Manual Refresh", use_container_width=True):
         st.session_state.picks_made = -1 
         st.session_state.draft_ended = False 
+        st.session_state.last_rendered_picks = -1
         st.cache_data.clear() 
 
     is_paused = st.session_state.pause_updates or st.session_state.draft_ended
@@ -271,13 +278,14 @@ else:
     @st.fragment(run_every=refresh_timer)
     def render_live_draft_board():
             
-        def draw_board_ui(start_str="--:--", end_str="--:--", dur_str="--"):
+        def draw_board_ui(display_count, start_str="--:--", end_str="--:--", dur_str="--"):
             col_title, col1, col_times, col2, col3 = st.columns([1.5, 0.8, 1.2, 1.2, 0.8]) 
             with col_title:
                 st.markdown(f"### ⚽ {league_name}") 
 
             with col1:
-                st.metric("Total Picks", f"{max(0, st.session_state.picks_made)} / {st.session_state.total_picks}")
+                # Update metric to show the slider's display count during replay
+                st.metric("Picks Shown", f"{display_count} / {st.session_state.total_picks}")
                 
             with col_times:
                 st.markdown(
@@ -295,7 +303,7 @@ else:
                     st.warning("⏸️ Updates Paused")
                 elif st.session_state.total_picks > 0:
                     st.write("🚧 **Draft In Progress**")
-                    st.progress(st.session_state.picks_made / st.session_state.total_picks)
+                    st.progress(display_count / st.session_state.total_picks)
                 else:
                     st.info("🟡 Waiting for draft...")
                     
@@ -311,7 +319,7 @@ else:
         players_df = fetch_players_data()
         if players_df.empty:
             st.toast("⚠️ Base player data unavailable. Retrying...")
-            draw_board_ui()
+            draw_board_ui(st.session_state.get("replay_pick_slider", 0))
             return
 
         choices_url = f"https://draft.premierleague.com/api/draft/{league_id}/choices"
@@ -321,7 +329,7 @@ else:
             choices_data = response.json()
         except requests.exceptions.RequestException:
             st.toast("⚠️ FPL API blip. Keeping previous board on screen while retrying...")
-            draw_board_ui()
+            draw_board_ui(st.session_state.get("replay_pick_slider", 0))
             return
             
         choices = choices_data.get("choices", [])
@@ -369,6 +377,7 @@ else:
         
         current_picks_made = len(made_picks_df)
         current_total_picks = len(choices_df)
+        st.session_state.total_picks = current_total_picks
         
         start_str, end_str, dur_str = "--:--", "--:--", "--"
         if not choices_df_raw.empty and "choice_time" in choices_df_raw.columns:
@@ -395,29 +404,61 @@ else:
                 st.session_state.draft_ended = True
                 st.rerun()
 
-        if current_picks_made != st.session_state.picks_made or st.session_state.board_html == "":
+        # --- DRAFT REPLAY SLIDER LOGIC ---
+        # Initialize or snap the slider state to track live progress
+        if "replay_pick_slider" not in st.session_state:
+            st.session_state.replay_pick_slider = current_picks_made
+            st.session_state.max_picks_seen = current_picks_made
             
-            made_picks_df["player_display"] = made_picks_df["player_first_name"] + " " + made_picks_df["player_last_name"].str[0]
-            merged_df = made_picks_df.merge(players_df, left_on="element", right_on="id", how="left")
-            merged_df["position"] = merged_df["element_type"].map(POSITION_MAP)
-            
-            merged_df["player_name"] = merged_df["web_name"] + " <span class='pl-team'>(" + merged_df["team_name"] + ")</span>"
-            merged_df["hover_name"] = merged_df["web_name"] + " (" + merged_df["team_name"] + ")"
+        # If the draft advances, and the user was watching live (slider pinned to max), auto-advance it
+        if current_picks_made > st.session_state.max_picks_seen:
+            if st.session_state.replay_pick_slider == st.session_state.max_picks_seen:
+                st.session_state.replay_pick_slider = current_picks_made
+            st.session_state.max_picks_seen = current_picks_made
 
-            first_picks = merged_df.groupby("entry_name")["index"].min().sort_values()
-            manager_order = first_picks.index.tolist()
+        # Render the slider in the sidebar (will auto-refresh safely inside the fragment)
+        with st.sidebar:
+            st.markdown("---")
+            st.subheader("⏪ Draft Replay")
+            if current_picks_made > 0:
+                display_picks = st.slider(
+                    "Show Picks Up To", 
+                    min_value=0, 
+                    max_value=current_picks_made, 
+                    key="replay_pick_slider",
+                    help="Drag this slider backward to replay the draft pick-by-pick as it happened."
+                )
+            else:
+                display_picks = 0
+                st.info("No picks made yet.")
+
+        # Re-render HTML if new picks arrived, or if the user moved the slider
+        if display_picks != st.session_state.last_rendered_picks or st.session_state.board_html == "":
             
-            manager_names = (
-                made_picks_df.drop_duplicates("entry_name")
-                .set_index("entry_name")["player_display"]
-                .reindex(manager_order)
-                .fillna("Unknown")
-                .to_dict()
-            )
+            # Truncate picks for replay functionality
+            display_picks_df = made_picks_df.head(display_picks).copy()
             
+            # Extract Manager orders and names definitively from the RAW choices array 
+            # so headers persist even if display_picks == 0
+            manager_info_df = choices_df_raw.drop_duplicates("entry_name").copy()
+            manager_info_df["manager_display"] = manager_info_df["player_first_name"].fillna('') + " " + manager_info_df["player_last_name"].fillna('').str[:1]
+            manager_names = manager_info_df.set_index("entry_name")["manager_display"].to_dict()
+            manager_order = choices_df_raw.groupby("entry_name")["index"].min().sort_values().index.tolist()
+            
+            if not display_picks_df.empty:
+                display_picks_df["player_display"] = display_picks_df["player_first_name"] + " " + display_picks_df["player_last_name"].str[0]
+                merged_df = display_picks_df.merge(players_df, left_on="element", right_on="id", how="left")
+                merged_df["position"] = merged_df["element_type"].map(POSITION_MAP)
+                merged_df["player_name"] = merged_df["web_name"] + " <span class='pl-team'>(" + merged_df["team_name"] + ")</span>"
+                merged_df["hover_name"] = merged_df["web_name"] + " (" + merged_df["team_name"] + ")"
+            else:
+                # Create an empty dataframe with correct columns if 0 picks selected
+                merged_df = pd.DataFrame(columns=["entry_name", "element_type", "index", "player_name", "hover_name"])
+
+            # Post Draft Analytics (Only calculate & show if fully live at 100% completion)
             manager_stats = {}
-            if current_picks_made == current_total_picks and current_total_picks > 0:
-                report_df = made_picks_df.sort_values("index").copy()
+            if display_picks == current_total_picks and current_total_picks > 0:
+                report_df = display_picks_df.sort_values("index").copy()
                 report_df["choice_time_dt"] = pd.to_datetime(report_df["choice_time"])
                 report_df["time_taken"] = report_df["choice_time_dt"].diff().dt.total_seconds()
                 
@@ -491,7 +532,8 @@ else:
                         "auto_html": auto_formatted
                     }
 
-            merged_df = merged_df.sort_values(["element_type", "index"])
+            if not merged_df.empty:
+                merged_df = merged_df.sort_values(["element_type", "index"])
 
             # BUILD HTML
             html_out = '<div class="draft-board-wrapper"><div class="draft-container">'
@@ -522,10 +564,13 @@ else:
                 for pos_id in [1, 2, 3, 4]:
                     pos_css_class = POS_CLASS_MAP[pos_id]
                     
-                    manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
-                    picks_formatted = manager_pos_picks["player_name"].tolist()
-                    picks_hover = manager_pos_picks["hover_name"].tolist()
-                    pick_indices = manager_pos_picks["index"].tolist() 
+                    if not merged_df.empty:
+                        manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
+                        picks_formatted = manager_pos_picks["player_name"].tolist()
+                        picks_hover = manager_pos_picks["hover_name"].tolist()
+                        pick_indices = manager_pos_picks["index"].tolist() 
+                    else:
+                        picks_formatted, picks_hover, pick_indices = [], [], []
                     
                     required_spots = ROSTER_LIMITS[pos_id]
                     
@@ -550,8 +595,8 @@ else:
             
             st.session_state.board_html = html_out
             st.session_state.picks_made = current_picks_made
-            st.session_state.total_picks = current_total_picks
+            st.session_state.last_rendered_picks = display_picks
 
-        draw_board_ui(start_str, end_str, dur_str)
+        draw_board_ui(display_picks, start_str, end_str, dur_str)
 
     render_live_draft_board()
