@@ -8,7 +8,6 @@ from datetime import datetime, timezone, timedelta
 st.set_page_config(page_title="Live FPL Draft Board", layout="wide", page_icon="⚽", initial_sidebar_state="collapsed")
 
 # --- INITIALISE SESSION STATE ---
-# active_league_id: Controls routing between the Landing Page (None) and the Draft Board (int)
 if "active_league_id" not in st.session_state:
     st.session_state.active_league_id = None
 if "picks_made" not in st.session_state:
@@ -32,8 +31,7 @@ if "is_playing" not in st.session_state:
 if "just_clicked_play" not in st.session_state:
     st.session_state.just_clicked_play = False
 
-# --- CUSTOM CSS FOR "ZOOM BROADCAST" UI WITH RESPONSIVE TEXT SCALING ---
-# Uses clamp() heavily to ensure fonts scale seamlessly across devices without wrapping awkwardly.
+# --- CUSTOM CSS FOR BROADCAST UI WITH RESPONSIVE TEXT SCALING ---
 st.markdown("""
     <style>
     .block-container {
@@ -50,20 +48,95 @@ st.markdown("""
     [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
     h3 { margin-top: 0px !important; margin-bottom: 0px !important; padding-bottom: 0px !important; }
     
+    /* TURN TRACKER BANNER */
+    .draft-tracker-banner {
+        display: flex;
+        gap: 8px;
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    .tracker-card {
+        flex: 1;
+        background-color: var(--secondary-background-color);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 6px 10px;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .tracker-current {
+        border: 1px solid #22c55e !important;
+        background-color: rgba(34, 197, 94, 0.08) !important;
+        box-shadow: 0 0 6px rgba(34, 197, 94, 0.25);
+    }
+    .tracker-next {
+        border: 1px solid #eab308 !important;
+        background-color: rgba(234, 179, 8, 0.05) !important;
+    }
+    .tracker-last {
+        border: 1px solid #3b82f6 !important;
+        background-color: rgba(59, 130, 246, 0.08) !important;
+    }
+    .tracker-label {
+        font-size: clamp(0.6rem, 0.75vw, 0.8rem);
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        opacity: 0.85;
+    }
+    .tracker-value {
+        font-size: clamp(0.8rem, 1.05vw, 1.2rem);
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .tracker-sub {
+        font-size: clamp(0.6rem, 0.75vw, 0.8rem);
+        opacity: 0.75;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
     .draft-board-wrapper { width: 100%; margin-bottom: 20px; }
     .draft-container {
-        display: flex; gap: 4px; width: 100%; height: calc(100vh - 200px); 
-        overflow-x: auto; /* Safeguard for 16-team leagues */
-        padding-bottom: 8px; /* Room for scrollbar */
+        display: flex; gap: 4px; width: 100%; height: calc(100vh - 250px); 
+        overflow-x: auto;
+        padding-bottom: 8px;
     }
     .manager-col {
         flex: 1 1 0; display: flex; flex-direction: column; 
-        min-width: 110px; /* Prevents text illegibility in 16-team leagues */
+        min-width: 110px;
         background-color: var(--secondary-background-color);
         border: 1px solid var(--border-color); border-radius: 4px; padding: 4px; overflow: hidden;
+        transition: border 0.2s ease, box-shadow 0.2s ease;
     }
     
-    /* TIDIED HEADER & TEAM NAMES SPACING */
+    /* ON CLOCK & ON DECK COLUMN HIGHLIGHTS */
+    .col-picking-now {
+        border: 2px solid #22c55e !important;
+        box-shadow: 0 0 8px rgba(34, 197, 94, 0.35) !important;
+    }
+    .col-picking-next {
+        border: 1px solid #eab308 !important;
+    }
+
+    .badge-picking {
+        background-color: #22c55e; color: #000;
+        font-size: clamp(0.5rem, 0.65vw, 0.75rem);
+        font-weight: 800; padding: 1px 4px; border-radius: 3px;
+        margin-left: 3px; vertical-align: middle;
+    }
+    .badge-next {
+        background-color: #eab308; color: #000;
+        font-size: clamp(0.5rem, 0.65vw, 0.75rem);
+        font-weight: 800; padding: 1px 4px; border-radius: 3px;
+        margin-left: 3px; vertical-align: middle;
+    }
+    
+    /* HEADER & TEAM NAMES */
     .manager-header {
         flex-shrink: 0; text-align: center; font-weight: 700; 
         font-size: clamp(0.8rem, 1.1vw, 1.2rem);
@@ -85,14 +158,10 @@ st.markdown("""
         font-weight: 400; 
         margin-top: 4px; 
     }
-    .squad-value-1st {
-        font-weight: 700; 
-    }
+    .squad-value-1st { font-weight: 700; }
     .rank-badge {
-        font-size: clamp(0.7rem, 0.85vw, 1rem); /* Matched to squad value size to prevent alignment issues */
-        opacity: 1.0; 
-        margin-left: 2px;
-        vertical-align: baseline; /* Ensures it doesn't push the line height up */
+        font-size: clamp(0.7rem, 0.85vw, 1rem);
+        opacity: 1.0; margin-left: 2px; vertical-align: baseline;
     }
     
     /* STATS DIVIDER AND SPACING */
@@ -103,14 +172,11 @@ st.markdown("""
         margin-top: 4px; margin-bottom: 4px; padding-bottom: 4px; 
         border-bottom: 1px solid var(--border-color); 
     }
-    .manager-stats-top span {
-        white-space: nowrap; 
-    }
+    .manager-stats-top span { white-space: nowrap; }
     
-    .time-slow { color: #ef4444; font-weight: 800; } /* Red */
-    .auto-high { color: #ef4444; font-weight: 800; } /* Red */
+    .time-slow { color: #ef4444; font-weight: 800; }
+    .auto-high { color: #ef4444; font-weight: 800; }
     
-    /* SUBTLE POSITION DIVIDER LINE */
     .pos-divider {
         flex-shrink: 0; height: 1px; background-color: var(--border-color);
         margin: 6px 2px 4px 2px; opacity: 0.6;
@@ -126,11 +192,17 @@ st.markdown("""
         text-overflow: ellipsis; box-shadow: 0 1px 2px rgba(0,0,0,0.05); position: relative; 
     }
     
-    /* ENHANCED GOLD HIGHLIGHT FOR 1ST ROUND PICKS */
     .card-round-1 {
         border: 1px solid rgba(212, 175, 55, 0.6) !important;
         background-color: rgba(212, 175, 55, 0.08) !important;
         box-shadow: 0 0 3px rgba(212, 175, 55, 0.4) !important;
+    }
+
+    /* LAST PICK HIGHLIGHT */
+    .card-last-picked {
+        border: 1px solid #3b82f6 !important;
+        background-color: rgba(59, 130, 246, 0.18) !important;
+        box-shadow: 0 0 6px rgba(59, 130, 246, 0.5) !important;
     }
 
     /* POSITIONAL COLOUR CODING BARS */
@@ -156,7 +228,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- CACHED DATA FETCHING ---
-# TTL caching ensures we don't bombard the FPL APIs for static background data.
 @st.cache_data(ttl=3600)
 def fetch_players_data():
     game_data_url = "https://draft.premierleague.com/api/bootstrap-static"
@@ -187,10 +258,6 @@ def fetch_main_game_prices():
 
 @st.cache_data(ttl=3600)
 def fetch_league_details(league_id):
-    """
-    Validates the league existence and fetches schedule timings.
-    Returns (None, None) if the league ID returns a 404.
-    """
     league_details_url = f"https://draft.premierleague.com/api/league/{league_id}/details"
     try:
         response = requests.get(league_details_url, timeout=10)
@@ -221,17 +288,10 @@ def render_landing_page():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.subheader("🔑 Enter Your League ID")
-        
         entered_id = st.number_input("League ID Number", min_value=1, value=217, step=1, key="league_id_input")
-        
-        st.info(
-            "💡 **Where to find your League ID?**\n\n"
-            "A league admin can quickly copy this from their **Edit League Admin** URL:\n\n"
-            "`https://draft.premierleague.com/league/YOUR_LEAGUE_ID/edit`"
-        )
+        st.info("💡 **Where to find your League ID?**\n\nURL: `https://draft.premierleague.com/league/YOUR_LEAGUE_ID/edit`")
         
         if st.button("🚀 Load Draft Board", use_container_width=True, type="primary"):
-            # Resets all state dependencies upon loading a new league
             st.session_state.active_league_id = entered_id
             st.session_state.picks_made = 0
             st.session_state.board_html = ""
@@ -248,8 +308,6 @@ else:
     league_id = st.session_state.active_league_id
     league_name, draft_start_dt = fetch_league_details(league_id)
     
-    # --- INVALID LEAGUE HANDLER ---
-    # Catches 404 responses before progressing to draft fragment logic
     if league_name is None:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
@@ -283,14 +341,12 @@ else:
     st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
 
     if st.sidebar.button("🔄 Manual Refresh", use_container_width=True):
-        # Setting to -1 temporarily forces a state mismatch, forcing a total visual rebuild.
         st.session_state.picks_made = -1 
         st.session_state.draft_ended = False 
         st.session_state.last_rendered_picks = -1
         st.session_state.is_playing = False
         st.cache_data.clear() 
 
-    # Halt the fragment auto-rerun cycle if paused, completed, or engaged in manual playback.
     is_paused = st.session_state.pause_updates or st.session_state.draft_ended or st.session_state.is_playing
     refresh_timer = None if is_paused else timedelta(seconds=refresh_seconds)
 
@@ -325,7 +381,6 @@ else:
                     st.warning("⏸️ Updates Paused")
                 elif st.session_state.total_picks > 0:
                     st.write("🚧 **Draft In Progress**")
-                    # Math clamp ensures visual progress bar doesn't crash on manual refresh (-1 inputs)
                     progress_val = max(0.0, min(1.0, display_count / st.session_state.total_picks))
                     st.progress(progress_val)
                 else:
@@ -359,7 +414,6 @@ else:
         choices = choices_data.get("choices", [])
         is_pre_draft = False
         
-        # Verify empty draft arrays or drafts populated entirely with empty elements (None values)
         if not choices:
             is_pre_draft = True
         else:
@@ -367,13 +421,10 @@ else:
             if "element" not in df_choices.columns or df_choices["element"].isna().all():
                 is_pre_draft = True
         
-        # --- PRE-DRAFT & COUNTDOWN HANDLER ---
         if is_pre_draft:
             now_utc = datetime.now(timezone.utc)
             if draft_start_dt:
                 draft_time = pd.to_datetime(draft_start_dt)
-                
-                # Check if FPL API Scheduled Draft Time has passed
                 if draft_time > now_utc:
                     time_diff = draft_time - now_utc
                     days = time_diff.days
@@ -382,7 +433,6 @@ else:
                     minutes = (seconds % 3600) // 60
                     
                     st.info(f"⏳ **Draft has not started yet.** Scheduled for: {draft_time.strftime('%d %b %Y %H:%M')} (UTC)")
-                    
                     st.markdown("### ⏲️ Time Until Draft")
                     col_d, col_h, col_m, _ = st.columns([1, 1, 1, 3])
                     col_d.metric("Days", days)
@@ -393,8 +443,7 @@ else:
             st.info("🟡 Draft room is open! Waiting for the first pick to be made...")
             return
 
-        # Core dataframe preparation
-        choices_df_raw = pd.DataFrame(choices)
+        choices_df_raw = pd.DataFrame(choices).sort_values("index").reset_index(drop=True)
         if "was_auto" not in choices_df_raw.columns:
             choices_df_raw["was_auto"] = False
             
@@ -429,19 +478,15 @@ else:
             if not st.session_state.draft_ended:
                 st.session_state.draft_ended = True
 
-        # --- DRAFT REPLAY SLIDER & AUTO-PLAY LOGIC ---
-        # Ensures slider matches the very end of the live draft initially
         if "replay_pick_slider" not in st.session_state:
             st.session_state.replay_pick_slider = current_picks_made
             st.session_state.max_picks_seen = current_picks_made
             
-        # Pushes slider forward automatically if a new pick arrives and we were watching live
         if current_picks_made > st.session_state.max_picks_seen:
             if st.session_state.replay_pick_slider == st.session_state.max_picks_seen:
                 st.session_state.replay_pick_slider = current_picks_made
             st.session_state.max_picks_seen = current_picks_made
 
-        # Adjust slider state strictly BEFORE rendering sidebar widgets to avoid Mutation Exceptions
         if st.session_state.is_playing:
             if st.session_state.get("just_clicked_play", False):
                 st.session_state.just_clicked_play = False
@@ -459,7 +504,6 @@ else:
                 col_btn1, col_btn2, col_btn3 = st.columns(3)
                 
                 with col_btn1:
-                    # Note: No manual st.rerun() here to prevent overwriting the widget queue. State handles it.
                     if st.button("▶️ Play", use_container_width=True):
                         if st.session_state.replay_pick_slider >= current_picks_made:
                             st.session_state.replay_pick_slider = 0 
@@ -471,7 +515,6 @@ else:
                         st.session_state.is_playing = False
                 
                 with col_btn3:
-                    # Snaps user immediately back to the live draft context
                     if st.button("⏹️ Stop", use_container_width=True):
                         st.session_state.is_playing = False
                         st.session_state.replay_pick_slider = current_picks_made
@@ -487,18 +530,54 @@ else:
                 display_picks = 0
                 st.info("No picks made yet.")
 
-        # STRICT RE-RENDER LOGIC: Always rebuild HTML if pick count changes OR during active replay playback
         if display_picks != st.session_state.last_rendered_picks or st.session_state.board_html == "" or st.session_state.is_playing:
             
-            # Truncates history DataFrame dynamically for replay visibility 
             display_picks_df = made_picks_df.head(display_picks).copy()
             
-            # Preserves column structures in the UI even when display_picks_df is heavily truncated (or empty)
             manager_info_df = choices_df_raw.drop_duplicates("entry_name").copy()
             manager_info_df["manager_display"] = manager_info_df["player_first_name"].fillna('') + " " + manager_info_df["player_last_name"].fillna('').str[:1]
             manager_names = manager_info_df.set_index("entry_name")["manager_display"].to_dict()
             manager_order = choices_df_raw.groupby("entry_name")["index"].min().sort_values().index.tolist()
             
+            # --- EVALUATE TURN TRACKER (CURRENT, NEXT, LAST) ---
+            last_pick_info = None
+            if display_picks > 0 and display_picks <= len(choices_df_raw):
+                last_choice = choices_df_raw.iloc[display_picks - 1]
+                last_mgr = manager_names.get(last_choice["entry_name"], last_choice["entry_name"])
+                player_id = last_choice["element"]
+                if pd.notna(player_id) and not players_df.empty:
+                    p_row = players_df[players_df["id"] == player_id]
+                    if not p_row.empty:
+                        p_name = p_row.iloc[0]["web_name"]
+                        p_team = p_row.iloc[0]["team_name"]
+                        last_pick_info = {
+                            "player": f"{p_name} ({p_team})",
+                            "manager": last_mgr,
+                            "pick_num": int(last_choice["index"])
+                        }
+
+            curr_picking_mgr_entry = None
+            curr_picking_info = None
+            if display_picks < current_total_picks and current_total_picks > 0:
+                curr_choice = choices_df_raw.iloc[display_picks]
+                curr_mgr = manager_names.get(curr_choice["entry_name"], curr_choice["entry_name"])
+                curr_picking_mgr_entry = curr_choice["entry_name"]
+                curr_picking_info = {
+                    "manager": curr_mgr,
+                    "pick_num": int(curr_choice["index"])
+                }
+
+            next_picking_mgr_entry = None
+            next_picking_info = None
+            if display_picks + 1 < current_total_picks and current_total_picks > 0:
+                next_choice = choices_df_raw.iloc[display_picks + 1]
+                next_mgr = manager_names.get(next_choice["entry_name"], next_choice["entry_name"])
+                next_picking_mgr_entry = next_choice["entry_name"]
+                next_picking_info = {
+                    "manager": next_mgr,
+                    "pick_num": int(next_choice["index"])
+                }
+
             if not display_picks_df.empty:
                 display_picks_df["player_display"] = display_picks_df["player_first_name"] + " " + display_picks_df["player_last_name"].str[0]
                 merged_df = display_picks_df.merge(players_df, left_on="element", right_on="id", how="left")
@@ -509,7 +588,6 @@ else:
                 merged_df = pd.DataFrame(columns=["entry_name", "element_type", "index", "player_name", "hover_name"])
 
             manager_stats = {}
-            # Post Draft Analytics triggers when max picks are shown
             if display_picks == current_total_picks and current_total_picks > 0:
                 report_df = display_picks_df.sort_values("index").copy()
                 report_df["choice_time_dt"] = pd.to_datetime(report_df["choice_time"])
@@ -589,17 +667,72 @@ else:
                 merged_df = merged_df.sort_values(["element_type", "index"])
 
             # BUILD HTML
-            html_out = '<div class="draft-board-wrapper"><div class="draft-container">'
+            html_out = '<div class="draft-board-wrapper">'
+            
+            # --- RENDER TURN TRACKER BANNER ---
+            html_out += '<div class="draft-tracker-banner">'
+            
+            # 1. Last Picked
+            html_out += '<div class="tracker-card tracker-last">'
+            html_out += '<div class="tracker-label">⚡ LAST PICKED</div>'
+            if last_pick_info:
+                html_out += f'<div class="tracker-value" title="{last_pick_info["player"]}">{last_pick_info["player"]}</div>'
+                html_out += f'<div class="tracker-sub" title="{last_pick_info["manager"]}">{last_pick_info["manager"]} • Pick #{last_pick_info["pick_num"]}</div>'
+            else:
+                html_out += '<div class="tracker-value">None</div>'
+                html_out += '<div class="tracker-sub">Draft Starting</div>'
+            html_out += '</div>'
+
+            # 2. Currently Picking
+            html_out += '<div class="tracker-card tracker-current">'
+            html_out += '<div class="tracker-label">🟢 CURRENTLY PICKING</div>'
+            if curr_picking_info:
+                html_out += f'<div class="tracker-value" title="{curr_picking_info["manager"]}">{curr_picking_info["manager"]}</div>'
+                html_out += f'<div class="tracker-sub">Pick #{curr_picking_info["pick_num"]}</div>'
+            else:
+                html_out += '<div class="tracker-value">Draft Complete 🎉</div>'
+                html_out += '<div class="tracker-sub">All Picks Made</div>'
+            html_out += '</div>'
+
+            # 3. Picking Next
+            html_out += '<div class="tracker-card tracker-next">'
+            html_out += '<div class="tracker-label">⏳ PICKING NEXT</div>'
+            if next_picking_info:
+                html_out += f'<div class="tracker-value" title="{next_picking_info["manager"]}">{next_picking_info["manager"]}</div>'
+                html_out += f'<div class="tracker-sub">Pick #{next_picking_info["pick_num"]}</div>'
+            else:
+                html_out += '<div class="tracker-value">N/A</div>'
+                html_out += '<div class="tracker-sub">Final Pick</div>'
+            html_out += '</div>'
+
+            html_out += '</div>'  # End Tracker Banner
+
+            html_out += '<div class="draft-container">'
 
             for m in manager_order:
-                html_out += '<div class="manager-col">'
+                is_curr_picker = (m == curr_picking_mgr_entry)
+                is_next_picker = (m == next_picking_mgr_entry)
+
+                col_classes = "manager-col"
+                if is_curr_picker:
+                    col_classes += " col-picking-now"
+                elif is_next_picker:
+                    col_classes += " col-picking-next"
+
+                html_out += f'<div class="{col_classes}">'
                 
                 mgr_name_display = manager_names.get(m, "Unknown")
                 is_champ = (m.lower() in prev_champs_list) or (mgr_name_display.lower() in prev_champs_list)
                 champ_star = " ⭐" if is_champ else ""
                 
+                badge_html = ""
+                if is_curr_picker:
+                    badge_html = ' <span class="badge-picking">ON CLOCK</span>'
+                elif is_next_picker:
+                    badge_html = ' <span class="badge-next">ON DECK</span>'
+
                 html_out += f'<div class="manager-header" title="{mgr_name_display}">'
-                html_out += f'<div class="manager-title-wrap">{mgr_name_display}{champ_star}</div>'
+                html_out += f'<div class="manager-title-wrap">{mgr_name_display}{champ_star}{badge_html}</div>'
                 html_out += f'<span class="team-name" title="{m}">{m}</span>'
                 
                 if m in manager_stats:
@@ -631,10 +764,13 @@ else:
                         if i < len(picks_formatted):
                             global_pick_idx = pick_indices[i]
                             is_round_one = global_pick_idx <= len(manager_order) 
+                            is_last_picked = (global_pick_idx == display_picks)
                             
                             card_classes = f"player-card {pos_css_class}"
                             if is_round_one:
                                 card_classes += " card-round-1"
+                            if is_last_picked:
+                                card_classes += " card-last-picked"
                                 
                             html_out += f'<div class="{card_classes}" title="{picks_hover[i]} (Pick #{global_pick_idx})">{picks_formatted[i]}</div>'
                         else:
@@ -652,7 +788,6 @@ else:
 
         draw_board_ui(display_picks, start_str, end_str, dur_str)
         
-        # Pace loop iterations with explicit sleep and trigger rerun for the animation effect
         if st.session_state.is_playing:
             time.sleep(0.8)
             st.rerun()
