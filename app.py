@@ -84,17 +84,18 @@ st.markdown("""
         flex-shrink: 0; text-align: center; font-weight: 700; 
         font-size: clamp(0.8rem, 1.1vw, 1.2rem);
         margin-bottom: 0px; padding: 4px 2px; 
-        border: 2px solid transparent; /* Prevents layout shifting when border is applied */
+        border: 2px solid transparent; /* Permanently reserves 2px for the border */
         border-radius: 4px;
-        transition: border 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+        box-sizing: border-box;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
     }
     .header-picking-now {
-        border: 2px solid #22c55e !important;
+        border-color: #22c55e !important;
         background-color: rgba(34, 197, 94, 0.08);
         box-shadow: 0 0 8px rgba(34, 197, 94, 0.35) !important;
     }
     .header-picking-next {
-        border: 2px solid #eab308 !important;
+        border-color: #eab308 !important;
         background-color: rgba(234, 179, 8, 0.05);
     }
     
@@ -141,7 +142,9 @@ st.markdown("""
     /* SCALABLE PLAYER CARDS */
     .player-card, .empty-card {
         flex: 1 1 0; display: flex; align-items: center; 
-        background-color: var(--background-color); border: 1px solid var(--border-color);
+        background-color: var(--background-color); 
+        border: 1px solid var(--border-color); /* Permanently reserves 1px */
+        box-sizing: border-box; /* Ensures border is calculated inside dimensions */
         padding: 0 4px 0 8px; margin-bottom: 3px; border-radius: 3px;
         font-size: clamp(0.75rem, 0.95vw, 1.1rem);
         font-weight: 500; white-space: nowrap; overflow: hidden;
@@ -149,14 +152,14 @@ st.markdown("""
     }
     
     .card-round-1 {
-        border: 1px solid rgba(212, 175, 55, 0.6) !important;
+        border-color: rgba(212, 175, 55, 0.6) !important;
         background-color: rgba(212, 175, 55, 0.08) !important;
         box-shadow: 0 0 3px rgba(212, 175, 55, 0.4) !important;
     }
 
     /* LAST PICK HIGHLIGHT */
     .card-last-picked {
-        border: 1px solid #3b82f6 !important;
+        border-color: #3b82f6 !important;
         background-color: rgba(59, 130, 246, 0.18) !important;
         box-shadow: 0 0 6px rgba(59, 130, 246, 0.5) !important;
     }
@@ -495,7 +498,6 @@ else:
             manager_names = manager_info_df.set_index("entry_name")["manager_display"].to_dict()
             manager_order = choices_df_raw.groupby("entry_name")["index"].min().sort_values().index.tolist()
             
-            # Identify current and next picking managers
             curr_picking_mgr_entry = None
             if display_picks < current_total_picks and current_total_picks > 0:
                 curr_choice = choices_df_raw.iloc[display_picks]
@@ -604,7 +606,6 @@ else:
 
                 html_out += '<div class="manager-col">'
                 
-                # --- STATUS TEXT OVER MANAGER FRAME ---
                 html_out += '<div class="picker-status-container">'
                 if is_curr_picker:
                     html_out += '<div class="picker-status status-now">🟢 CURRENTLY PICKING</div>'
@@ -616,7 +617,6 @@ else:
                 is_champ = (m.lower() in prev_champs_list) or (mgr_name_display.lower() in prev_champs_list)
                 champ_star = " ⭐" if is_champ else ""
                 
-                # Dynamic frame classes
                 header_classes = "manager-header"
                 if is_curr_picker:
                     header_classes += " header-picking-now"
