@@ -48,61 +48,9 @@ st.markdown("""
     [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
     h3 { margin-top: 0px !important; margin-bottom: 0px !important; padding-bottom: 0px !important; }
     
-    /* TURN TRACKER BANNER */
-    .draft-tracker-banner {
-        display: flex;
-        gap: 8px;
-        width: 100%;
-        margin-bottom: 10px;
-    }
-    .tracker-card {
-        flex: 1;
-        background-color: var(--secondary-background-color);
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        padding: 6px 10px;
-        text-align: center;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .tracker-current {
-        border: 1px solid #22c55e !important;
-        background-color: rgba(34, 197, 94, 0.08) !important;
-        box-shadow: 0 0 6px rgba(34, 197, 94, 0.25);
-    }
-    .tracker-next {
-        border: 1px solid #eab308 !important;
-        background-color: rgba(234, 179, 8, 0.05) !important;
-    }
-    .tracker-last {
-        border: 1px solid #3b82f6 !important;
-        background-color: rgba(59, 130, 246, 0.08) !important;
-    }
-    .tracker-label {
-        font-size: clamp(0.6rem, 0.75vw, 0.8rem);
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        opacity: 0.85;
-    }
-    .tracker-value {
-        font-size: clamp(0.8rem, 1.05vw, 1.2rem);
-        font-weight: 700;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .tracker-sub {
-        font-size: clamp(0.6rem, 0.75vw, 0.8rem);
-        opacity: 0.75;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
     .draft-board-wrapper { width: 100%; margin-bottom: 20px; }
     .draft-container {
-        display: flex; gap: 4px; width: 100%; height: calc(100vh - 250px); 
+        display: flex; gap: 4px; width: 100%; height: calc(100vh - 200px); 
         overflow-x: auto;
         padding-bottom: 8px;
     }
@@ -111,37 +59,45 @@ st.markdown("""
         min-width: 110px;
         background-color: var(--secondary-background-color);
         border: 1px solid var(--border-color); border-radius: 4px; padding: 4px; overflow: hidden;
-        transition: border 0.2s ease, box-shadow 0.2s ease;
     }
     
-    /* ON CLOCK & ON DECK COLUMN HIGHLIGHTS */
-    .col-picking-now {
-        border: 2px solid #22c55e !important;
-        box-shadow: 0 0 8px rgba(34, 197, 94, 0.35) !important;
+    /* PICKER STATUS ABOVE FRAME */
+    .picker-status-container {
+        height: 16px; 
+        text-align: center;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
-    .col-picking-next {
-        border: 1px solid #eab308 !important;
-    }
-
-    .badge-picking {
-        background-color: #22c55e; color: #000;
+    .picker-status {
         font-size: clamp(0.5rem, 0.65vw, 0.75rem);
-        font-weight: 800; padding: 1px 4px; border-radius: 3px;
-        margin-left: 3px; vertical-align: middle;
+        font-weight: 800;
+        white-space: nowrap;
+        letter-spacing: 0.5px;
     }
-    .badge-next {
-        background-color: #eab308; color: #000;
-        font-size: clamp(0.5rem, 0.65vw, 0.75rem);
-        font-weight: 800; padding: 1px 4px; border-radius: 3px;
-        margin-left: 3px; vertical-align: middle;
-    }
+    .status-now { color: #22c55e; }
+    .status-next { color: #eab308; }
     
-    /* HEADER & TEAM NAMES */
+    /* MANAGER HEADER (THE FRAME) */
     .manager-header {
         flex-shrink: 0; text-align: center; font-weight: 700; 
         font-size: clamp(0.8rem, 1.1vw, 1.2rem);
-        margin-bottom: 0px; padding-bottom: 0px; 
+        margin-bottom: 0px; padding: 4px 2px; 
+        border: 2px solid transparent; /* Prevents layout shifting when border is applied */
+        border-radius: 4px;
+        transition: border 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
     }
+    .header-picking-now {
+        border: 2px solid #22c55e !important;
+        background-color: rgba(34, 197, 94, 0.08);
+        box-shadow: 0 0 8px rgba(34, 197, 94, 0.35) !important;
+    }
+    .header-picking-next {
+        border: 2px solid #eab308 !important;
+        background-color: rgba(234, 179, 8, 0.05);
+    }
+    
     .manager-title-wrap {
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
@@ -539,44 +495,16 @@ else:
             manager_names = manager_info_df.set_index("entry_name")["manager_display"].to_dict()
             manager_order = choices_df_raw.groupby("entry_name")["index"].min().sort_values().index.tolist()
             
-            # --- EVALUATE TURN TRACKER (CURRENT, NEXT, LAST) ---
-            last_pick_info = None
-            if display_picks > 0 and display_picks <= len(choices_df_raw):
-                last_choice = choices_df_raw.iloc[display_picks - 1]
-                last_mgr = manager_names.get(last_choice["entry_name"], last_choice["entry_name"])
-                player_id = last_choice["element"]
-                if pd.notna(player_id) and not players_df.empty:
-                    p_row = players_df[players_df["id"] == player_id]
-                    if not p_row.empty:
-                        p_name = p_row.iloc[0]["web_name"]
-                        p_team = p_row.iloc[0]["team_name"]
-                        last_pick_info = {
-                            "player": f"{p_name} ({p_team})",
-                            "manager": last_mgr,
-                            "pick_num": int(last_choice["index"])
-                        }
-
+            # Identify current and next picking managers
             curr_picking_mgr_entry = None
-            curr_picking_info = None
             if display_picks < current_total_picks and current_total_picks > 0:
                 curr_choice = choices_df_raw.iloc[display_picks]
-                curr_mgr = manager_names.get(curr_choice["entry_name"], curr_choice["entry_name"])
                 curr_picking_mgr_entry = curr_choice["entry_name"]
-                curr_picking_info = {
-                    "manager": curr_mgr,
-                    "pick_num": int(curr_choice["index"])
-                }
 
             next_picking_mgr_entry = None
-            next_picking_info = None
             if display_picks + 1 < current_total_picks and current_total_picks > 0:
                 next_choice = choices_df_raw.iloc[display_picks + 1]
-                next_mgr = manager_names.get(next_choice["entry_name"], next_choice["entry_name"])
                 next_picking_mgr_entry = next_choice["entry_name"]
-                next_picking_info = {
-                    "manager": next_mgr,
-                    "pick_num": int(next_choice["index"])
-                }
 
             if not display_picks_df.empty:
                 display_picks_df["player_display"] = display_picks_df["player_first_name"] + " " + display_picks_df["player_last_name"].str[0]
@@ -668,71 +596,35 @@ else:
 
             # BUILD HTML
             html_out = '<div class="draft-board-wrapper">'
-            
-            # --- RENDER TURN TRACKER BANNER ---
-            html_out += '<div class="draft-tracker-banner">'
-            
-            # 1. Last Picked
-            html_out += '<div class="tracker-card tracker-last">'
-            html_out += '<div class="tracker-label">⚡ LAST PICKED</div>'
-            if last_pick_info:
-                html_out += f'<div class="tracker-value" title="{last_pick_info["player"]}">{last_pick_info["player"]}</div>'
-                html_out += f'<div class="tracker-sub" title="{last_pick_info["manager"]}">{last_pick_info["manager"]} • Pick #{last_pick_info["pick_num"]}</div>'
-            else:
-                html_out += '<div class="tracker-value">None</div>'
-                html_out += '<div class="tracker-sub">Draft Starting</div>'
-            html_out += '</div>'
-
-            # 2. Currently Picking
-            html_out += '<div class="tracker-card tracker-current">'
-            html_out += '<div class="tracker-label">🟢 CURRENTLY PICKING</div>'
-            if curr_picking_info:
-                html_out += f'<div class="tracker-value" title="{curr_picking_info["manager"]}">{curr_picking_info["manager"]}</div>'
-                html_out += f'<div class="tracker-sub">Pick #{curr_picking_info["pick_num"]}</div>'
-            else:
-                html_out += '<div class="tracker-value">Draft Complete 🎉</div>'
-                html_out += '<div class="tracker-sub">All Picks Made</div>'
-            html_out += '</div>'
-
-            # 3. Picking Next
-            html_out += '<div class="tracker-card tracker-next">'
-            html_out += '<div class="tracker-label">⏳ PICKING NEXT</div>'
-            if next_picking_info:
-                html_out += f'<div class="tracker-value" title="{next_picking_info["manager"]}">{next_picking_info["manager"]}</div>'
-                html_out += f'<div class="tracker-sub">Pick #{next_picking_info["pick_num"]}</div>'
-            else:
-                html_out += '<div class="tracker-value">N/A</div>'
-                html_out += '<div class="tracker-sub">Final Pick</div>'
-            html_out += '</div>'
-
-            html_out += '</div>'  # End Tracker Banner
-
             html_out += '<div class="draft-container">'
 
             for m in manager_order:
                 is_curr_picker = (m == curr_picking_mgr_entry)
                 is_next_picker = (m == next_picking_mgr_entry)
 
-                col_classes = "manager-col"
+                html_out += '<div class="manager-col">'
+                
+                # --- STATUS TEXT OVER MANAGER FRAME ---
+                html_out += '<div class="picker-status-container">'
                 if is_curr_picker:
-                    col_classes += " col-picking-now"
+                    html_out += '<div class="picker-status status-now">🟢 CURRENTLY PICKING</div>'
                 elif is_next_picker:
-                    col_classes += " col-picking-next"
-
-                html_out += f'<div class="{col_classes}">'
+                    html_out += '<div class="picker-status status-next">⏳ PICKING NEXT</div>'
+                html_out += '</div>'
                 
                 mgr_name_display = manager_names.get(m, "Unknown")
                 is_champ = (m.lower() in prev_champs_list) or (mgr_name_display.lower() in prev_champs_list)
                 champ_star = " ⭐" if is_champ else ""
                 
-                badge_html = ""
+                # Dynamic frame classes
+                header_classes = "manager-header"
                 if is_curr_picker:
-                    badge_html = ' <span class="badge-picking">ON CLOCK</span>'
+                    header_classes += " header-picking-now"
                 elif is_next_picker:
-                    badge_html = ' <span class="badge-next">ON DECK</span>'
+                    header_classes += " header-picking-next"
 
-                html_out += f'<div class="manager-header" title="{mgr_name_display}">'
-                html_out += f'<div class="manager-title-wrap">{mgr_name_display}{champ_star}{badge_html}</div>'
+                html_out += f'<div class="{header_classes}" title="{mgr_name_display}">'
+                html_out += f'<div class="manager-title-wrap">{mgr_name_display}{champ_star}</div>'
                 html_out += f'<span class="team-name" title="{m}">{m}</span>'
                 
                 if m in manager_stats:
