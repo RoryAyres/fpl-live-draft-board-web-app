@@ -26,6 +26,8 @@ if "last_rendered_picks" not in st.session_state:
     st.session_state.last_rendered_picks = -1
 if "is_playing" not in st.session_state:
     st.session_state.is_playing = False
+if "just_clicked_play" not in st.session_state:
+    st.session_state.just_clicked_play = False
 
 # --- CUSTOM CSS FOR "ZOOM BROADCAST" UI WITH RESPONSIVE TEXT SCALING ---
 st.markdown("""
@@ -418,29 +420,38 @@ else:
                 st.session_state.replay_pick_slider = current_picks_made
             st.session_state.max_picks_seen = current_picks_made
 
-        # Adjust slider state BEFORE rendering sidebar widgets
-        if st.session_state.is_playing:
-            if st.session_state.replay_pick_slider < current_picks_made:
-                st.session_state.replay_pick_slider += 1
-            else:
-                st.session_state.is_playing = False
-
         with st.sidebar:
             st.markdown("---")
             st.subheader("⏪ Draft Replay")
             
             if current_picks_made > 0:
-                col_btn1, col_btn2 = st.columns(2)
+                col_btn1, col_btn2, col_btn3 = st.columns(3)
+                
                 with col_btn1:
                     if st.button("▶️ Play", use_container_width=True):
                         if st.session_state.replay_pick_slider >= current_picks_made:
                             st.session_state.replay_pick_slider = 0 
                         st.session_state.is_playing = True
-                        st.rerun()
+                        st.session_state.just_clicked_play = True
+                
                 with col_btn2:
+                    if st.button("⏸️ Pause", use_container_width=True):
+                        st.session_state.is_playing = False
+                
+                with col_btn3:
                     if st.button("⏹️ Stop", use_container_width=True):
                         st.session_state.is_playing = False
-                        st.rerun()
+                        st.session_state.replay_pick_slider = current_picks_made
+
+                # Advance playback safely without st.rerun() causing state deletion bugs
+                if st.session_state.is_playing:
+                    if st.session_state.get("just_clicked_play", False):
+                        st.session_state.just_clicked_play = False
+                    else:
+                        if st.session_state.replay_pick_slider < current_picks_made:
+                            st.session_state.replay_pick_slider += 1
+                        else:
+                            st.session_state.is_playing = False
 
                 display_picks = st.slider(
                     "Show Picks Up To", 
@@ -453,7 +464,6 @@ else:
                 display_picks = 0
                 st.info("No picks made yet.")
 
-        # STRICT RE-RENDER LOGIC: Always rebuild HTML if pick count changes OR during replay playback
         if display_picks != st.session_state.last_rendered_picks or st.session_state.board_html == "" or st.session_state.is_playing:
             
             display_picks_df = made_picks_df.head(display_picks).copy()
