@@ -7,7 +7,8 @@ from datetime import datetime, timezone, timedelta
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Live FPL Draft Board", layout="wide", page_icon="⚽", initial_sidebar_state="collapsed")
 
-# --- INITIALIZE SESSION STATE ---
+# --- INITIALISE SESSION STATE ---
+# active_league_id: Controls routing between the Landing Page (None) and the Draft Board (int)
 if "active_league_id" not in st.session_state:
     st.session_state.active_league_id = None
 if "picks_made" not in st.session_state:
@@ -20,6 +21,8 @@ if "pause_updates" not in st.session_state:
     st.session_state.pause_updates = False
 if "draft_ended" not in st.session_state:
     st.session_state.draft_ended = False 
+
+# Replay & Playback State Variables
 if "max_picks_seen" not in st.session_state:
     st.session_state.max_picks_seen = 0
 if "last_rendered_picks" not in st.session_state:
@@ -30,6 +33,7 @@ if "just_clicked_play" not in st.session_state:
     st.session_state.just_clicked_play = False
 
 # --- CUSTOM CSS FOR "ZOOM BROADCAST" UI WITH RESPONSIVE TEXT SCALING ---
+# Uses clamp() heavily to ensure fonts scale seamlessly across devices without wrapping awkwardly.
 st.markdown("""
     <style>
     .block-container {
@@ -129,6 +133,7 @@ st.markdown("""
         box-shadow: 0 0 3px rgba(212, 175, 55, 0.4) !important;
     }
 
+    /* POSITIONAL COLOUR CODING BARS */
     .card-gk::before, .card-def::before, .card-mid::before, .card-fwd::before {
         content: ""; position: absolute; left: 0; top: 20%; bottom: 20%; width: 3px;
         border-radius: 0 2px 2px 0; opacity: 0.55; 
@@ -151,6 +156,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- CACHED DATA FETCHING ---
+# TTL caching ensures we don't bombard the FPL APIs for static background data.
 @st.cache_data(ttl=3600)
 def fetch_players_data():
     game_data_url = "https://draft.premierleague.com/api/bootstrap-static"
@@ -181,6 +187,10 @@ def fetch_main_game_prices():
 
 @st.cache_data(ttl=3600)
 def fetch_league_details(league_id):
+    """
+    Validates the league existence and fetches schedule timings.
+    Returns (None, None) if the league ID returns a 404.
+    """
     league_details_url = f"https://draft.premierleague.com/api/league/{league_id}/details"
     try:
         response = requests.get(league_details_url, timeout=10)
@@ -221,6 +231,7 @@ def render_landing_page():
         )
         
         if st.button("🚀 Load Draft Board", use_container_width=True, type="primary"):
+            # Resets all state dependencies upon loading a new league
             st.session_state.active_league_id = entered_id
             st.session_state.picks_made = 0
             st.session_state.board_html = ""
@@ -238,6 +249,7 @@ else:
     league_name, draft_start_dt = fetch_league_details(league_id)
     
     # --- INVALID LEAGUE HANDLER ---
+    # Catches 404 responses before progressing to draft fragment logic
     if league_name is None:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
@@ -271,12 +283,14 @@ else:
     st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
 
     if st.sidebar.button("🔄 Manual Refresh", use_container_width=True):
+        # Setting to -1 temporarily forces a state mismatch, forcing a total visual rebuild.
         st.session_state.picks_made = -1 
         st.session_state.draft_ended = False 
         st.session_state.last_rendered_picks = -1
         st.session_state.is_playing = False
         st.cache_data.clear() 
 
+    # Halt the fragment auto-rerun cycle if paused, completed, or engaged in manual playback.
     is_paused = st.session_state.pause_updates or st.session_state.draft_ended or st.session_state.is_playing
     refresh_timer = None if is_paused else timedelta(seconds=refresh_seconds)
 
@@ -285,6 +299,7 @@ else:
     def render_live_draft_board():
             
         def draw_board_ui(display_count, start_str="--:--", end_str="--:--", dur_str="--"):
+            """Renders the top panel header metrics."""
             col_title, col1, col_times, col2, col3 = st.columns([1.5, 0.8, 1.2, 1.2, 0.8]) 
             with col_title:
                 st.markdown(f"### ⚽ {league_name}") 
@@ -310,6 +325,7 @@ else:
                     st.warning("⏸️ Updates Paused")
                 elif st.session_state.total_picks > 0:
                     st.write("🚧 **Draft In Progress**")
+                    # Math clamp ensures visual progress bar doesn't crash on manual refresh (-1 inputs)
                     progress_val = max(0.0, min(1.0, display_count / st.session_state.total_picks))
                     st.progress(progress_val)
                 else:
@@ -343,6 +359,7 @@ else:
         choices = choices_data.get("choices", [])
         is_pre_draft = False
         
+        # Verify empty draft arrays or drafts populated entirely with empty elements (None values)
         if not choices:
             is_pre_draft = True
         else:
@@ -356,6 +373,7 @@ else:
             if draft_start_dt:
                 draft_time = pd.to_datetime(draft_start_dt)
                 
+                # Check if FPL API Scheduled Draft Time has passed
                 if draft_time > now_utc:
                     time_diff = draft_time - now_utc
                     days = time_diff.days
@@ -375,6 +393,7 @@ else:
             st.info("🟡 Draft room is open! Waiting for the first pick to be made...")
             return
 
+        # Core dataframe preparation
         choices_df_raw = pd.DataFrame(choices)
         if "was_auto" not in choices_df_raw.columns:
             choices_df_raw["was_auto"] = False
@@ -411,14 +430,26 @@ else:
                 st.session_state.draft_ended = True
 
         # --- DRAFT REPLAY SLIDER & AUTO-PLAY LOGIC ---
+        # Ensures slider matches the very end of the live draft initially
         if "replay_pick_slider" not in st.session_state:
             st.session_state.replay_pick_slider = current_picks_made
             st.session_state.max_picks_seen = current_picks_made
             
+        # Pushes slider forward automatically if a new pick arrives and we were watching live
         if current_picks_made > st.session_state.max_picks_seen:
             if st.session_state.replay_pick_slider == st.session_state.max_picks_seen:
                 st.session_state.replay_pick_slider = current_picks_made
             st.session_state.max_picks_seen = current_picks_made
+
+        # Adjust slider state strictly BEFORE rendering sidebar widgets to avoid Mutation Exceptions
+        if st.session_state.is_playing:
+            if st.session_state.get("just_clicked_play", False):
+                st.session_state.just_clicked_play = False
+            else:
+                if st.session_state.replay_pick_slider < current_picks_made:
+                    st.session_state.replay_pick_slider += 1
+                else:
+                    st.session_state.is_playing = False
 
         with st.sidebar:
             st.markdown("---")
@@ -428,6 +459,7 @@ else:
                 col_btn1, col_btn2, col_btn3 = st.columns(3)
                 
                 with col_btn1:
+                    # Note: No manual st.rerun() here to prevent overwriting the widget queue. State handles it.
                     if st.button("▶️ Play", use_container_width=True):
                         if st.session_state.replay_pick_slider >= current_picks_made:
                             st.session_state.replay_pick_slider = 0 
@@ -439,19 +471,10 @@ else:
                         st.session_state.is_playing = False
                 
                 with col_btn3:
+                    # Snaps user immediately back to the live draft context
                     if st.button("⏹️ Stop", use_container_width=True):
                         st.session_state.is_playing = False
                         st.session_state.replay_pick_slider = current_picks_made
-
-                # Advance playback safely without st.rerun() causing state deletion bugs
-                if st.session_state.is_playing:
-                    if st.session_state.get("just_clicked_play", False):
-                        st.session_state.just_clicked_play = False
-                    else:
-                        if st.session_state.replay_pick_slider < current_picks_made:
-                            st.session_state.replay_pick_slider += 1
-                        else:
-                            st.session_state.is_playing = False
 
                 display_picks = st.slider(
                     "Show Picks Up To", 
@@ -464,10 +487,13 @@ else:
                 display_picks = 0
                 st.info("No picks made yet.")
 
+        # STRICT RE-RENDER LOGIC: Always rebuild HTML if pick count changes OR during active replay playback
         if display_picks != st.session_state.last_rendered_picks or st.session_state.board_html == "" or st.session_state.is_playing:
             
+            # Truncates history DataFrame dynamically for replay visibility 
             display_picks_df = made_picks_df.head(display_picks).copy()
             
+            # Preserves column structures in the UI even when display_picks_df is heavily truncated (or empty)
             manager_info_df = choices_df_raw.drop_duplicates("entry_name").copy()
             manager_info_df["manager_display"] = manager_info_df["player_first_name"].fillna('') + " " + manager_info_df["player_last_name"].fillna('').str[:1]
             manager_names = manager_info_df.set_index("entry_name")["manager_display"].to_dict()
@@ -483,6 +509,7 @@ else:
                 merged_df = pd.DataFrame(columns=["entry_name", "element_type", "index", "player_name", "hover_name"])
 
             manager_stats = {}
+            # Post Draft Analytics triggers when max picks are shown
             if display_picks == current_total_picks and current_total_picks > 0:
                 report_df = display_picks_df.sort_values("index").copy()
                 report_df["choice_time_dt"] = pd.to_datetime(report_df["choice_time"])
@@ -625,7 +652,7 @@ else:
 
         draw_board_ui(display_picks, start_str, end_str, dur_str)
         
-        # Pace loop iterations with explicit sleep and trigger rerun
+        # Pace loop iterations with explicit sleep and trigger rerun for the animation effect
         if st.session_state.is_playing:
             time.sleep(0.8)
             st.rerun()
