@@ -288,7 +288,6 @@ else:
                 st.markdown(f"### ⚽ {league_name}") 
 
             with col1:
-                # Prevent negative display counts in metrics due to manual refresh toggles
                 st.metric("Picks Shown", f"{max(0, display_count)} / {st.session_state.total_picks}")
                 
             with col_times:
@@ -309,7 +308,6 @@ else:
                     st.warning("⏸️ Updates Paused")
                 elif st.session_state.total_picks > 0:
                     st.write("🚧 **Draft In Progress**")
-                    # Clamped progress logic to prevent invalid float errors when picks_made briefly drops below 0
                     progress_val = max(0.0, min(1.0, display_count / st.session_state.total_picks))
                     st.progress(progress_val)
                 else:
@@ -420,10 +418,9 @@ else:
                 st.session_state.replay_pick_slider = current_picks_made
             st.session_state.max_picks_seen = current_picks_made
 
-        # IMPORTANT FIX: Adjust slider state BEFORE it is rendered on screen to prevent Exception
+        # Adjust slider state BEFORE rendering sidebar widgets
         if st.session_state.is_playing:
             if st.session_state.replay_pick_slider < current_picks_made:
-                time.sleep(1.0) 
                 st.session_state.replay_pick_slider += 1
             else:
                 st.session_state.is_playing = False
@@ -456,8 +453,8 @@ else:
                 display_picks = 0
                 st.info("No picks made yet.")
 
-
-        if display_picks != st.session_state.last_rendered_picks or st.session_state.board_html == "":
+        # STRICT RE-RENDER LOGIC: Always rebuild HTML if pick count changes OR during replay playback
+        if display_picks != st.session_state.last_rendered_picks or st.session_state.board_html == "" or st.session_state.is_playing:
             
             display_picks_df = made_picks_df.head(display_picks).copy()
             
@@ -618,8 +615,9 @@ else:
 
         draw_board_ui(display_picks, start_str, end_str, dur_str)
         
-        # Trigger the next frame of the auto-play loop if active
+        # Pace loop iterations with explicit sleep and trigger rerun
         if st.session_state.is_playing:
+            time.sleep(0.8)
             st.rerun()
 
     render_live_draft_board()
