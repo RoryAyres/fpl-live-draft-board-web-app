@@ -298,6 +298,7 @@ else:
 
     st.sidebar.markdown("---")
     st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
+    st.sidebar.toggle("🔢 Sort by Pick Order", key="sort_by_pick", help="Toggle between sorting squads by position (GK/DEF/MID/FWD) or chronologically by draft pick.")
 
     if st.sidebar.button("🔄 Manual Refresh", use_container_width=True):
         st.session_state.picks_made = -1 
@@ -599,6 +600,8 @@ else:
             # BUILD HTML
             html_out = '<div class="draft-board-wrapper">'
             html_out += '<div class="draft-container">'
+            
+            sort_by_pick = st.session_state.get("sort_by_pick", False)
 
             for m in manager_order:
                 is_curr_picker = (m == curr_picking_mgr_entry)
@@ -639,22 +642,23 @@ else:
                 else:
                     html_out += '</div>' 
                 
-                for pos_id in [1, 2, 3, 4]:
-                    pos_css_class = POS_CLASS_MAP[pos_id]
-                    
+                if sort_by_pick:
+                    # --- NEW LOGIC: CHRONOLOGICAL PICK ORDER ---
                     if not merged_df.empty:
-                        manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
-                        picks_formatted = manager_pos_picks["player_name"].tolist()
-                        picks_hover = manager_pos_picks["hover_name"].tolist()
-                        pick_indices = manager_pos_picks["index"].tolist() 
+                        manager_all_picks = merged_df[merged_df["entry_name"] == m].sort_values("index")
+                        picks_formatted = manager_all_picks["player_name"].tolist()
+                        picks_hover = manager_all_picks["hover_name"].tolist()
+                        pick_indices = manager_all_picks["index"].tolist()
+                        pick_positions = manager_all_picks["element_type"].tolist()
                     else:
-                        picks_formatted, picks_hover, pick_indices = [], [], []
-                    
-                    required_spots = ROSTER_LIMITS[pos_id]
-                    
-                    for i in range(required_spots):
+                        picks_formatted, picks_hover, pick_indices, pick_positions = [], [], [], []
+                        
+                    for i in range(15):  # 15 roster spots total
                         if i < len(picks_formatted):
                             global_pick_idx = pick_indices[i]
+                            pos_id = pick_positions[i]
+                            pos_css_class = POS_CLASS_MAP[pos_id]
+                            
                             is_round_one = global_pick_idx <= len(manager_order) 
                             is_last_picked = (global_pick_idx == display_picks)
                             
@@ -667,9 +671,39 @@ else:
                             html_out += f'<div class="{card_classes}" title="{picks_hover[i]} (Pick #{global_pick_idx})">{picks_formatted[i]}</div>'
                         else:
                             html_out += '<div class="empty-card">-</div>'
-                    
-                    if pos_id < 4:
-                        html_out += '<div class="pos-divider"></div>'
+                else:
+                    # --- EXISTING LOGIC: SORT BY POSITION ---
+                    for pos_id in [1, 2, 3, 4]:
+                        pos_css_class = POS_CLASS_MAP[pos_id]
+                        
+                        if not merged_df.empty:
+                            manager_pos_picks = merged_df[(merged_df["entry_name"] == m) & (merged_df["element_type"] == pos_id)]
+                            picks_formatted = manager_pos_picks["player_name"].tolist()
+                            picks_hover = manager_pos_picks["hover_name"].tolist()
+                            pick_indices = manager_pos_picks["index"].tolist() 
+                        else:
+                            picks_formatted, picks_hover, pick_indices = [], [], []
+                        
+                        required_spots = ROSTER_LIMITS[pos_id]
+                        
+                        for i in range(required_spots):
+                            if i < len(picks_formatted):
+                                global_pick_idx = pick_indices[i]
+                                is_round_one = global_pick_idx <= len(manager_order) 
+                                is_last_picked = (global_pick_idx == display_picks)
+                                
+                                card_classes = f"player-card {pos_css_class}"
+                                if is_round_one:
+                                    card_classes += " card-round-1"
+                                if is_last_picked:
+                                    card_classes += " card-last-picked"
+                                    
+                                html_out += f'<div class="{card_classes}" title="{picks_hover[i]} (Pick #{global_pick_idx})">{picks_formatted[i]}</div>'
+                            else:
+                                html_out += '<div class="empty-card">-</div>'
+                        
+                        if pos_id < 4:
+                            html_out += '<div class="pos-divider"></div>'
                             
                 html_out += '</div>' 
             html_out += '</div></div>'

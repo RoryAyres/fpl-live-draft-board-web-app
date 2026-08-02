@@ -22,9 +22,12 @@
 - Draft Replay & Auto-Play: A sidebar slider allows users to rewind and review picks. Includes Play, Pause, and Stop media controls to simulate a live draft broadcast with 0.8s intervals.
 - Manager Columns: Side-by-side columns ordered chronologically by each manager's first draft pick.
 - Past Champions Integration: A sidebar text input allows users to input comma-separated manager/team names to display a gold star (⭐) next to past winners.
-- Positional Grouping & Colour Coding: Cards are grouped into Goalkeepers (2), Defenders (5), Midfielders (5), and Forwards (3) with distinct positional left-border colour accents (Yellow, Blue, Green, Red).
+- Positional Grouping & Colour Coding: Cards are grouped into Goalkeepers (2), Defenders (5), Midfielders (5), and Forwards (3) with distinct positional left-border colour accents (Yellow, Blue, Green, Red). A toggle allows switching to a chronological Pick Order view.
 - Round 1 Highlighting: Every manager's first-round selection features a subtle gold border and background highlight (`.card-round-1`).
 - Post-Draft Analytics (Revealed dynamically when viewing the final pick):
   - Squad Valuations: Evaluates total squad costs using main-game player prices from the primary FPL API. Ranks squads, highlighting 1st place with 🥇 and last place with 🥄.
   - Draft Timings & Autopicks: Tracks total time spent drafting per manager, flags the slowest drafter in red text, and tracks total automated picks (🤖), highlighting the most automated picks in red.
   - Overall Session Metrics: Displays global draft start date/time, end date/time, and total duration at the top panel.
+
+## 4. AI Instructions
+- Commit Summaries: Whenever providing updated code, new features, or modifications to the application, always conclude by generating a git commit summary and description outlining the changes made. The commit summary and the commit description must be provided in separate copiable plaintext boxes (e.g., within separate code blocks).
