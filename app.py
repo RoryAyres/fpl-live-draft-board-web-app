@@ -281,6 +281,11 @@ else:
                 st.rerun()
         st.stop()
 
+    is_future_draft = False
+    if draft_start_dt:
+        if pd.to_datetime(draft_start_dt) > datetime.now(timezone.utc):
+            is_future_draft = True
+
     # --- SIDEBAR CONTROLS ---
     st.sidebar.header("⚙️ Draft Settings")
     st.sidebar.caption(f"Active League: **#{league_id}**")
@@ -311,7 +316,7 @@ else:
         st.session_state.is_playing = False
         st.cache_data.clear() 
 
-    is_paused = st.session_state.pause_updates or st.session_state.draft_ended or st.session_state.is_playing
+    is_paused = st.session_state.pause_updates or st.session_state.draft_ended or st.session_state.is_playing or is_future_draft
     refresh_timer = None if is_paused else timedelta(seconds=refresh_seconds)
 
     # --- AUTO-REFRESHING LIVE COMPONENT ---
@@ -398,58 +403,31 @@ else:
                     hours = seconds // 3600
                     minutes = (seconds % 3600) // 60
                     
-                    st.markdown(f"<p style='text-align: center; opacity: 0.8; margin-bottom: 1.5rem;'>Draft is scheduled for: <strong>{draft_time.strftime('%d %b %Y %H:%M')} (UTC)</strong></p>", unsafe_allow_html=True)
-                    
-                    st.markdown("### ⏲️ Live Countdown")
-                    col_d, col_h, col_m, _ = st.columns([1, 1, 1, 3])
-                    col_d.metric("Days", days)
-                    col_h.metric("Hours", hours)
-                    col_m.metric("Minutes", minutes)
-                    st.markdown("<hr style='margin: 1.5rem 0;'>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='text-align: center; opacity: 0.8; margin-bottom: 2rem; font-size: 1.1rem;'>Draft is scheduled for: <strong>{draft_time.strftime('%d %b %Y %H:%M')} (UTC)</strong> in {days} days {hours} hours {minutes} minutes.</p>", unsafe_allow_html=True)
                 else:
                     st.info("🟡 Draft room is open! Waiting for the first pick to be made...")
                     st.markdown("<hr style='margin: 1.5rem 0;'>", unsafe_allow_html=True)
+            else:
+                st.info("🟡 Draft room is open! Waiting for the first pick to be made...")
+                st.markdown("<hr style='margin: 1.5rem 0;'>", unsafe_allow_html=True)
 
             if league_entries:
                 st.markdown("<h3 style='text-align: center; margin-bottom: 1rem;'>👥 Participating Teams</h3>", unsafe_allow_html=True)
                 
-                html_predraft = '<div class="draft-board-wrapper"><div class="draft-container">'
-                sort_by_pick = st.session_state.get("sort_by_pick", False)
-
+                html_predraft = '<div style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin-bottom: 2rem; padding: 0 1rem;">'
                 for entry in league_entries:
                     mgr_name = f"{entry.get('player_first_name', '')} {entry.get('player_last_name', '')}".strip()
                     team_name = entry.get('entry_name', 'Unknown Team')
                     
-                    html_predraft += '<div class="manager-col">'
-                    
-                    # Empty space for where the "PICKING NOW" status normally sits
-                    html_predraft += '<div class="picker-status-container"></div>'
-                    
-                    html_predraft += f'<div class="manager-header" title="{mgr_name}">'
-                    html_predraft += f'<div class="manager-title-wrap">{mgr_name}</div>'
-                    html_predraft += f'<span class="team-name" title="{team_name}">{team_name}</span>'
-                    html_predraft += '</div>'
-                    
-                    # Add a spacer where the squad value/stats usually are, to keep vertical alignment consistent
-                    html_predraft += '<div class="squad-value" style="opacity:0;">-</div>'
-                    html_predraft += '<div class="manager-stats-top" style="border-bottom: none; opacity:0;"><span>-</span></div>'
-                    
-                    # Generate 15 empty slots just like the live board
-                    if sort_by_pick:
-                        for i in range(15):
-                            html_predraft += '<div class="empty-card">-</div>'
-                    else:
-                        for pos_id in [1, 2, 3, 4]:
-                            required_spots = ROSTER_LIMITS[pos_id]
-                            for i in range(required_spots):
-                                html_predraft += '<div class="empty-card">-</div>'
-                            
-                            if pos_id < 4:
-                                html_predraft += '<div class="pos-divider"></div>'
-
-                    html_predraft += '</div>' 
-                    
-                html_predraft += '</div></div>'
+                    html_predraft += f'''
+                    <div class="manager-col" style="min-width: 180px; flex: 0 1 220px; padding: 16px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--secondary-background-color);">
+                        <div class="manager-header" style="border-color: transparent; background-color: transparent; padding: 0;">
+                            <div class="manager-title-wrap" style="font-size: 1.2rem;">{mgr_name}</div>
+                        </div>
+                        <span class="team-name" style="font-size: 0.95rem; margin-top: 8px; opacity: 1.0; font-weight: 500; display: block;">{team_name}</span>
+                    </div>
+                    '''
+                html_predraft += '</div>'
                 st.markdown(html_predraft, unsafe_allow_html=True)
             
             return
