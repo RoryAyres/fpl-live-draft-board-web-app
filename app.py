@@ -221,14 +221,15 @@ def fetch_league_details(league_id):
     try:
         response = requests.get(league_details_url, timeout=10)
         if response.status_code == 404:
-            return None, None
+            return None, None, []
         response.raise_for_status()
         data = response.json()
         league_name = data.get("league", {}).get("name", f"League {league_id}")
         draft_dt = data.get("league", {}).get("draft_dt", None)
-        return league_name, draft_dt
+        league_entries = data.get("league_entries", [])
+        return league_name, draft_dt, league_entries
     except Exception:
-        return f"League {league_id}", None
+        return f"League {league_id}", None, []
 
 def format_time(seconds):
     m, s = divmod(int(seconds), 60)
@@ -247,25 +248,28 @@ def render_landing_page():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.subheader("🔑 Enter Your League ID")
-        entered_id = st.number_input("League ID Number", min_value=1, value=217, step=1, key="league_id_input")
+        entered_id = st.number_input("League ID Number", min_value=1, value=None, step=1, key="league_id_input", placeholder="e.g. 12345")
         st.info("💡 **Where to find your League ID?**\n\nURL: `https://draft.premierleague.com/league/YOUR_LEAGUE_ID/edit`")
         
         if st.button("🚀 Load Draft Board", use_container_width=True, type="primary"):
-            st.session_state.active_league_id = entered_id
-            st.session_state.picks_made = 0
-            st.session_state.board_html = ""
-            st.session_state.draft_ended = False
-            st.session_state.max_picks_seen = 0
-            st.session_state.last_rendered_picks = -1
-            st.session_state.is_playing = False
-            st.rerun()
+            if entered_id is not None:
+                st.session_state.active_league_id = entered_id
+                st.session_state.picks_made = 0
+                st.session_state.board_html = ""
+                st.session_state.draft_ended = False
+                st.session_state.max_picks_seen = 0
+                st.session_state.last_rendered_picks = -1
+                st.session_state.is_playing = False
+                st.rerun()
+            else:
+                st.error("Please enter a valid League ID.")
 
 # --- MAIN APP ROUTING & DRAFT BOARD VIEW ---
 if not st.session_state.active_league_id:
     render_landing_page()
 else:
     league_id = st.session_state.active_league_id
-    league_name, draft_start_dt = fetch_league_details(league_id)
+    league_name, draft_start_dt, league_entries = fetch_league_details(league_id)
     
     if league_name is None:
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -382,6 +386,18 @@ else:
                 is_pre_draft = True
         
         if is_pre_draft:
+            st.markdown(f"<h2 style='text-align: center; margin-bottom: 2rem;'>🏆 Welcome to the {league_name} Draft Room</h2>", unsafe_allow_html=True)
+
+            if league_entries:
+                st.markdown("### 👥 Participating Teams")
+                cols = st.columns(4)
+                for idx, entry in enumerate(league_entries):
+                    mgr_name = f"{entry.get('player_first_name', '')} {entry.get('player_last_name', '')}".strip()
+                    team_name = entry.get('entry_name', 'Unknown Team')
+                    with cols[idx % 4]:
+                        st.info(f"**{team_name}**\n\n👤 {mgr_name}")
+            
+            st.markdown("---")
             now_utc = datetime.now(timezone.utc)
             if draft_start_dt:
                 draft_time = pd.to_datetime(draft_start_dt)
@@ -392,8 +408,8 @@ else:
                     hours = seconds // 3600
                     minutes = (seconds % 3600) // 60
                     
-                    st.info(f"⏳ **Draft has not started yet.** Scheduled for: {draft_time.strftime('%d %b %Y %H:%M')} (UTC)")
-                    st.markdown("### ⏲️ Time Until Draft")
+                    st.info(f"⏳ **Draft is scheduled for:** {draft_time.strftime('%d %b %Y %H:%M')} (UTC)")
+                    st.markdown("### ⏲️ Live Countdown")
                     col_d, col_h, col_m, _ = st.columns([1, 1, 1, 3])
                     col_d.metric("Days", days)
                     col_h.metric("Hours", hours)
@@ -643,7 +659,6 @@ else:
                     html_out += '</div>' 
                 
                 if sort_by_pick:
-                    # --- NEW LOGIC: CHRONOLOGICAL PICK ORDER ---
                     if not merged_df.empty:
                         manager_all_picks = merged_df[merged_df["entry_name"] == m].sort_values("index")
                         picks_formatted = manager_all_picks["player_name"].tolist()
@@ -653,7 +668,7 @@ else:
                     else:
                         picks_formatted, picks_hover, pick_indices, pick_positions = [], [], [], []
                         
-                    for i in range(15):  # 15 roster spots total
+                    for i in range(15):
                         if i < len(picks_formatted):
                             global_pick_idx = pick_indices[i]
                             pos_id = pick_positions[i]
@@ -672,7 +687,6 @@ else:
                         else:
                             html_out += '<div class="empty-card">-</div>'
                 else:
-                    # --- EXISTING LOGIC: SORT BY POSITION ---
                     for pos_id in [1, 2, 3, 4]:
                         pos_css_class = POS_CLASS_MAP[pos_id]
                         
