@@ -419,14 +419,14 @@ else:
                     mgr_name = f"{entry.get('player_first_name', '')} {entry.get('player_last_name', '')}".strip()
                     team_name = entry.get('entry_name', 'Unknown Team')
                     
-                    html_predraft += f'''
-                    <div class="manager-col" style="min-width: 180px; flex: 0 1 220px; padding: 16px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--secondary-background-color);">
-                        <div class="manager-header" style="border-color: transparent; background-color: transparent; padding: 0;">
-                            <div class="manager-title-wrap" style="font-size: 1.2rem;">{mgr_name}</div>
-                        </div>
-                        <span class="team-name" style="font-size: 0.95rem; margin-top: 8px; opacity: 1.0; font-weight: 500; display: block;">{team_name}</span>
-                    </div>
-                    '''
+                    # Using single-line concatenation without hidden whitespace to prevent markdown parser bugs
+                    html_predraft += f'<div class="manager-col" style="min-width: 180px; flex: 0 1 220px; padding: 16px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--secondary-background-color);">'
+                    html_predraft += f'<div class="manager-header" style="border-color: transparent; background-color: transparent; padding: 0;">'
+                    html_predraft += f'<div class="manager-title-wrap" style="font-size: 1.2rem;">{mgr_name}</div>'
+                    html_predraft += f'</div>'
+                    html_predraft += f'<span class="team-name" style="font-size: 0.95rem; margin-top: 8px; opacity: 1.0; font-weight: 500; display: block;">{team_name}</span>'
+                    html_predraft += f'</div>'
+                    
                 html_predraft += '</div>'
                 st.markdown(html_predraft, unsafe_allow_html=True)
             
