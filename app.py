@@ -325,12 +325,16 @@ else:
             
         def draw_board_ui(display_count, start_str="--:--", end_str="--:--", dur_str="--"):
             """Renders the top panel header metrics."""
-            col_title, col1, col_times, col2, col3 = st.columns([1.5, 0.8, 1.2, 1.2, 0.8]) 
+            col_title, col_round, col_times, col_prog, col_last = st.columns([1.5, 0.8, 1.2, 1.5, 0.8]) 
             with col_title:
                 st.markdown(f"### ⚽ {league_name}") 
 
-            with col1:
-                st.metric("Picks Shown", f"{max(0, display_count)} / {st.session_state.total_picks}")
+            with col_round:
+                num_mgrs = st.session_state.total_picks // 15 if st.session_state.total_picks > 0 else 0
+                current_round = (display_count - 1) // num_mgrs + 1 if display_count > 0 and num_mgrs > 0 else 1
+                if current_round > 15: 
+                    current_round = 15
+                st.metric("Current Round", f"{current_round} / 15" if num_mgrs > 0 else "--")
                 
             with col_times:
                 st.markdown(
@@ -341,21 +345,21 @@ else:
                     unsafe_allow_html=True
                 )
             
-            with col2:
+            with col_prog:
                 if st.session_state.draft_ended:
-                    st.success("✅ Draft Complete!")
+                    st.success(f"✅ Draft Complete! ({st.session_state.total_picks} Picks)")
                 elif st.session_state.is_playing:
-                    st.info("▶️ Replay Playing...")
+                    st.info(f"▶️ Replay Playing... ({max(0, display_count)}/{st.session_state.total_picks})")
                 elif st.session_state.pause_updates:
                     st.warning("⏸️ Updates Paused")
                 elif st.session_state.total_picks > 0:
-                    st.write("🚧 **Draft In Progress**")
+                    st.write(f"🚧 **Draft Progress:** {max(0, display_count)} / {st.session_state.total_picks}")
                     progress_val = max(0.0, min(1.0, display_count / st.session_state.total_picks))
                     st.progress(progress_val)
                 else:
                     st.info("🟡 Waiting for draft...")
                     
-            with col3:
+            with col_last:
                 now_bst = datetime.now(timezone.utc) + timedelta(hours=1)
                 st.metric("Last Synced", now_bst.strftime("%H:%M:%S BST"))
 
@@ -466,6 +470,7 @@ else:
         if current_total_picks > 0 and current_picks_made == current_total_picks:
             if not st.session_state.draft_ended:
                 st.session_state.draft_ended = True
+                st.rerun()
 
         if "replay_pick_slider" not in st.session_state:
             st.session_state.replay_pick_slider = current_picks_made
@@ -604,8 +609,6 @@ else:
                         if rank == 1:
                             rank_indicator = "🥇"
                             val_class = " squad-value-1st"
-                        elif rank == len(valid_values_sorted) and len(valid_values_sorted) > 3:
-                            rank_indicator = "🥄" 
                         else:
                             rank_indicator = ""
                             
@@ -646,8 +649,10 @@ else:
                 html_out += '</div>'
                 
                 mgr_name_display = manager_names.get(m, "Unknown")
-                is_champ = (m.lower() in prev_champs_list) or (mgr_name_display.lower() in prev_champs_list)
-                champ_star = " ⭐" if is_champ else ""
+                
+                # Count instances in the list to allow multiple stars
+                star_count = prev_champs_list.count(m.lower()) + prev_champs_list.count(mgr_name_display.lower())
+                champ_star = " ⭐" * star_count if star_count > 0 else ""
                 
                 header_classes = "manager-header"
                 if is_curr_picker:
@@ -688,7 +693,7 @@ else:
                             pos_css_class = POS_CLASS_MAP[pos_id]
                             
                             is_round_one = global_pick_idx <= len(manager_order) 
-                            is_last_picked = (global_pick_idx == display_picks)
+                            is_last_picked = (global_pick_idx == display_picks) and not st.session_state.draft_ended
                             
                             card_classes = f"player-card {pos_css_class}"
                             if is_round_one:
@@ -717,7 +722,7 @@ else:
                             if i < len(picks_formatted):
                                 global_pick_idx = pick_indices[i]
                                 is_round_one = global_pick_idx <= len(manager_order) 
-                                is_last_picked = (global_pick_idx == display_picks)
+                                is_last_picked = (global_pick_idx == display_picks) and not st.session_state.draft_ended
                                 
                                 card_classes = f"player-card {pos_css_class}"
                                 if is_round_one:
