@@ -20,6 +20,8 @@ if "pause_updates" not in st.session_state:
     st.session_state.pause_updates = False
 if "draft_ended" not in st.session_state:
     st.session_state.draft_ended = False 
+if "last_sort_state" not in st.session_state:
+    st.session_state.last_sort_state = False
 
 # Replay & Playback State Variables
 if "max_picks_seen" not in st.session_state:
@@ -259,6 +261,7 @@ def render_landing_page():
                 st.session_state.draft_ended = False
                 st.session_state.max_picks_seen = 0
                 st.session_state.last_rendered_picks = -1
+                st.session_state.last_sort_state = False
                 st.session_state.is_playing = False
                 st.rerun()
             else:
@@ -325,17 +328,29 @@ else:
             
         def draw_board_ui(display_count, start_str="--:--", end_str="--:--", dur_str="--"):
             """Renders the top panel header metrics."""
-            col_title, col_round, col_times, col_prog, col_last = st.columns([1.5, 0.8, 1.2, 1.5, 0.8]) 
+            col_title, col_prog, col_times, col_last = st.columns([1.5, 1.8, 1.2, 0.8]) 
             with col_title:
                 st.markdown(f"### ⚽ {league_name}") 
-
-            with col_round:
+            
+            with col_prog:
                 num_mgrs = st.session_state.total_picks // 15 if st.session_state.total_picks > 0 else 0
                 current_round = (display_count - 1) // num_mgrs + 1 if display_count > 0 and num_mgrs > 0 else 1
                 if current_round > 15: 
                     current_round = 15
-                st.metric("Current Round", f"{current_round} / 15" if num_mgrs > 0 else "--")
-                
+                    
+                if st.session_state.draft_ended:
+                    st.success(f"✅ Draft Complete! (15 Rounds | {st.session_state.total_picks} Picks)")
+                elif st.session_state.is_playing:
+                    st.info(f"▶️ Replay Playing... (Round {current_round}/15 | Pick {max(0, display_count)}/{st.session_state.total_picks})")
+                elif st.session_state.pause_updates:
+                    st.warning("⏸️ Updates Paused")
+                elif st.session_state.total_picks > 0:
+                    st.write(f"🚧 **Draft Progress:** Round {current_round}/15 &nbsp;|&nbsp; Pick {max(0, display_count)}/{st.session_state.total_picks}")
+                    progress_val = max(0.0, min(1.0, display_count / st.session_state.total_picks))
+                    st.progress(progress_val)
+                else:
+                    st.info("🟡 Waiting for draft...")
+                    
             with col_times:
                 st.markdown(
                     f"<div style='font-size: 0.85rem; line-height: 1.4; opacity: 0.9; margin-top: -0.2rem;'>"
@@ -345,20 +360,6 @@ else:
                     unsafe_allow_html=True
                 )
             
-            with col_prog:
-                if st.session_state.draft_ended:
-                    st.success(f"✅ Draft Complete! ({st.session_state.total_picks} Picks)")
-                elif st.session_state.is_playing:
-                    st.info(f"▶️ Replay Playing... ({max(0, display_count)}/{st.session_state.total_picks})")
-                elif st.session_state.pause_updates:
-                    st.warning("⏸️ Updates Paused")
-                elif st.session_state.total_picks > 0:
-                    st.write(f"🚧 **Draft Progress:** {max(0, display_count)} / {st.session_state.total_picks}")
-                    progress_val = max(0.0, min(1.0, display_count / st.session_state.total_picks))
-                    st.progress(progress_val)
-                else:
-                    st.info("🟡 Waiting for draft...")
-                    
             with col_last:
                 now_bst = datetime.now(timezone.utc) + timedelta(hours=1)
                 st.metric("Last Synced", now_bst.strftime("%H:%M:%S BST"))
@@ -524,7 +525,12 @@ else:
                 display_picks = 0
                 st.info("No picks made yet.")
 
-        if display_picks != st.session_state.last_rendered_picks or st.session_state.board_html == "" or st.session_state.is_playing:
+        current_sort_state = st.session_state.get("sort_by_pick", False)
+
+        if (display_picks != st.session_state.last_rendered_picks or 
+            st.session_state.board_html == "" or 
+            st.session_state.is_playing or
+            current_sort_state != st.session_state.get("last_sort_state", False)):
             
             display_picks_df = made_picks_df.head(display_picks).copy()
             
@@ -633,8 +639,6 @@ else:
             html_out = '<div class="draft-board-wrapper">'
             html_out += '<div class="draft-container">'
             
-            sort_by_pick = st.session_state.get("sort_by_pick", False)
-
             for m in manager_order:
                 is_curr_picker = (m == curr_picking_mgr_entry)
                 is_next_picker = (m == next_picking_mgr_entry)
@@ -676,7 +680,7 @@ else:
                 else:
                     html_out += '</div>' 
                 
-                if sort_by_pick:
+                if current_sort_state:
                     if not merged_df.empty:
                         manager_all_picks = merged_df[merged_df["entry_name"] == m].sort_values("index")
                         picks_formatted = manager_all_picks["player_name"].tolist()
@@ -743,6 +747,7 @@ else:
             st.session_state.board_html = html_out
             st.session_state.picks_made = current_picks_made
             st.session_state.last_rendered_picks = display_picks
+            st.session_state.last_sort_state = current_sort_state
 
         draw_board_ui(display_picks, start_str, end_str, dur_str)
         
