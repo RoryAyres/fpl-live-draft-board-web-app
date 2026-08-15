@@ -431,7 +431,11 @@ else:
                 
                 html_predraft = '<div style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin-bottom: 2rem; padding: 0 1rem;">'
                 for entry in league_entries:
-                    mgr_name = f"{entry.get('player_first_name', '')} {entry.get('player_last_name', '')}".strip()
+                    first_name = entry.get('player_first_name', '')
+                    last_name = entry.get('player_last_name', '')
+                    last_initial = last_name[0] if last_name else ''
+                    mgr_name = f"{first_name} {last_initial}".strip()
+                    
                     team_name = entry.get('entry_name', 'Unknown Team')
                     
                     star_count = prev_champs_list.count(team_name.lower()) + prev_champs_list.count(mgr_name.lower())

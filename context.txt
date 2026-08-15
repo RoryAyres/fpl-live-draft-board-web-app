@@ -18,7 +18,7 @@
 ## 3. Core Features & Functionality
 - Landing Page & Validation: Prompts users for a League ID (blank by default for easy manual entry) with error handling for invalid (404) leagues.
 - Pre-Draft Waiting Room: Detects if a draft has not yet started and displays a clean, static CSS flexbox grid of participating teams and managers, alongside the scheduled draft date. Removing live countdown functionality maintains alignment stability.
-- Past Champions Integration: A text input in the sidebar allows users to record comma-separated manager/team names. This list is bound to `st.session_state`, driving the logic to display a gold star (⭐) next to past winners universally across the pre-draft, live tracking, and post-draft analytical views.
+- Past Champions Integration: A text input in the sidebar allows users to record comma-separated manager/team names. This list is bound to `st.session_state`, driving the logic to display a gold star (⭐) next to past winners universally across the pre-draft, live tracking, and post-draft analytical views. Name strings are parsed uniformly across all views to read as "First Name + Last Initial" (e.g., "John D") to ensure input tracking is unified.
 - Live Tracking: Queries the official FPL Draft API (`/api/draft/{league_id}/choices`) to monitor pick progress, displaying progress bars, pick counts, and synchronisation times.
 - Draft Replay & Auto-Play: A sidebar slider allows users to rewind and review picks. Includes Play, Pause, and Stop media controls to simulate a live draft broadcast with 0.8s intervals.
 - Manager Columns: Side-by-side columns ordered chronologically by each manager's first draft pick.
