@@ -265,7 +265,7 @@ def render_landing_page():
         if st.button("🚀 Load Draft Board", use_container_width=True, type="primary"):
             if entered_id is not None:
                 st.session_state.active_league_id = entered_id
-                st.query_params["league"] = str(entered_id) # Write league ID to URL for sharing
+                st.query_params["league"] = str(entered_id) 
                 st.session_state.picks_made = 0
                 st.session_state.board_html = ""
                 st.session_state.draft_ended = False
@@ -307,11 +307,20 @@ else:
     if st.sidebar.button("👈 Switch League", use_container_width=True):
         st.session_state.active_league_id = None
         st.session_state.is_playing = False
-        st.query_params.clear() # Clear URL params on exit
+        st.query_params.clear() 
         st.rerun()
 
     st.sidebar.markdown("---")
     refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, max_value=30, value=5)
+
+    champ_val = ",".join(st.session_state.prev_champs_list)
+    prev_champs_input = st.sidebar.text_input(
+        "🏆 Previous Champions",
+        value=champ_val,
+        placeholder="Comma-separated names...",
+        help="Enter exact Manager or Team names separated by commas to award them a gold star on the board."
+    )
+    st.session_state.prev_champs_list = [name.strip().lower() for name in prev_champs_input.split(",") if name.strip()]
 
     st.sidebar.markdown("---")
     st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
@@ -418,36 +427,25 @@ else:
             if league_entries:
                 st.markdown("<h3 style='text-align: center; margin-bottom: 1rem;'>👥 Participating Teams</h3>", unsafe_allow_html=True)
                 
+                prev_champs_list = st.session_state.get("prev_champs_list", [])
+                
                 html_predraft = '<div style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin-bottom: 2rem; padding: 0 1rem;">'
                 for entry in league_entries:
                     mgr_name = f"{entry.get('player_first_name', '')} {entry.get('player_last_name', '')}".strip()
                     team_name = entry.get('entry_name', 'Unknown Team')
                     
+                    star_count = prev_champs_list.count(team_name.lower()) + prev_champs_list.count(mgr_name.lower())
+                    champ_star = " ⭐" * star_count if star_count > 0 else ""
+                    
                     html_predraft += f'<div class="manager-col" style="min-width: 180px; flex: 0 1 220px; padding: 16px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--secondary-background-color);">'
                     html_predraft += f'<div class="manager-header" style="border-color: transparent; background-color: transparent; padding: 0;">'
-                    html_predraft += f'<div class="manager-title-wrap" style="font-size: 1.2rem;">{mgr_name}</div>'
+                    html_predraft += f'<div class="manager-title-wrap" style="font-size: 1.2rem;">{mgr_name}{champ_star}</div>'
                     html_predraft += f'</div>'
                     html_predraft += f'<span class="team-name" style="font-size: 0.95rem; margin-top: 8px; opacity: 1.0; font-weight: 500; display: block;">{team_name}</span>'
                     html_predraft += f'</div>'
                     
                 html_predraft += '</div>'
                 st.markdown(html_predraft, unsafe_allow_html=True)
-                
-                # Input for persisting Champions on the pre-draft screen
-                st.markdown("<h4 style='text-align: center; margin-top: 2rem; margin-bottom: 0.5rem;'>⭐ Defending Champions</h4>", unsafe_allow_html=True)
-                st.markdown("<p style='text-align: center; opacity: 0.8; font-size: 0.9rem;'>Enter Manager or Team names (comma-separated) to award a gold star on the live board.</p>", unsafe_allow_html=True)
-                
-                col_c1, col_c2, col_c3 = st.columns([1, 2, 1])
-                with col_c2:
-                    champ_val = ",".join(st.session_state.prev_champs_list)
-                    prev_champs_input = st.text_input(
-                        "Champions",
-                        value=champ_val,
-                        placeholder="e.g. John Doe, FC Awesome",
-                        label_visibility="collapsed",
-                        key="champ_input"
-                    )
-                    st.session_state.prev_champs_list = [name.strip().lower() for name in prev_champs_input.split(",") if name.strip()]
             
             return
 
