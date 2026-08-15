@@ -22,6 +22,8 @@ if "draft_ended" not in st.session_state:
     st.session_state.draft_ended = False 
 if "last_sort_state" not in st.session_state:
     st.session_state.last_sort_state = False
+if "prev_champs_list" not in st.session_state:
+    st.session_state.prev_champs_list = []
 
 # Replay & Playback State Variables
 if "max_picks_seen" not in st.session_state:
@@ -32,6 +34,13 @@ if "is_playing" not in st.session_state:
     st.session_state.is_playing = False
 if "just_clicked_play" not in st.session_state:
     st.session_state.just_clicked_play = False
+
+# --- URL PARAMETER ROUTING ---
+if "league" in st.query_params and st.session_state.active_league_id is None:
+    try:
+        st.session_state.active_league_id = int(st.query_params["league"])
+    except ValueError:
+        pass
 
 # --- CUSTOM CSS FOR BROADCAST UI WITH RESPONSIVE TEXT SCALING ---
 st.markdown("""
@@ -256,6 +265,7 @@ def render_landing_page():
         if st.button("🚀 Load Draft Board", use_container_width=True, type="primary"):
             if entered_id is not None:
                 st.session_state.active_league_id = entered_id
+                st.query_params["league"] = str(entered_id) # Write league ID to URL for sharing
                 st.session_state.picks_made = 0
                 st.session_state.board_html = ""
                 st.session_state.draft_ended = False
@@ -281,6 +291,7 @@ else:
             if st.button("👈 Return to Landing Page", use_container_width=True):
                 st.session_state.active_league_id = None
                 st.session_state.is_playing = False
+                st.query_params.clear()
                 st.rerun()
         st.stop()
 
@@ -296,17 +307,11 @@ else:
     if st.sidebar.button("👈 Switch League", use_container_width=True):
         st.session_state.active_league_id = None
         st.session_state.is_playing = False
+        st.query_params.clear() # Clear URL params on exit
         st.rerun()
 
     st.sidebar.markdown("---")
     refresh_seconds = st.sidebar.slider("Refresh Interval (Seconds)", min_value=3, max_value=30, value=5)
-
-    prev_champs_input = st.sidebar.text_input(
-        "🏆 Previous Champions", 
-        placeholder="Comma-separated names...", 
-        help="Enter exact Manager or Team names separated by commas to award them a gold star on the board."
-    )
-    prev_champs_list = [name.strip().lower() for name in prev_champs_input.split(",") if name.strip()]
 
     st.sidebar.markdown("---")
     st.sidebar.toggle("⏸️ Pause Live Updates", key="pause_updates")
@@ -402,13 +407,7 @@ else:
             if draft_start_dt:
                 draft_time = pd.to_datetime(draft_start_dt)
                 if draft_time > now_utc:
-                    time_diff = draft_time - now_utc
-                    days = time_diff.days
-                    seconds = time_diff.seconds
-                    hours = seconds // 3600
-                    minutes = (seconds % 3600) // 60
-                    
-                    st.markdown(f"<p style='text-align: center; opacity: 0.8; margin-bottom: 2rem; font-size: 1.1rem;'>Draft is scheduled for: <strong>{draft_time.strftime('%d %b %Y %H:%M')} (UTC)</strong> in {days} days {hours} hours {minutes} minutes.</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='text-align: center; opacity: 0.8; margin-bottom: 2rem; font-size: 1.1rem;'>Draft is scheduled for: <strong>{draft_time.strftime('%d %b %Y %H:%M')} (UTC)</strong></p>", unsafe_allow_html=True)
                 else:
                     st.info("🟡 Draft room is open! Waiting for the first pick to be made...")
                     st.markdown("<hr style='margin: 1.5rem 0;'>", unsafe_allow_html=True)
@@ -424,7 +423,6 @@ else:
                     mgr_name = f"{entry.get('player_first_name', '')} {entry.get('player_last_name', '')}".strip()
                     team_name = entry.get('entry_name', 'Unknown Team')
                     
-                    # Using single-line concatenation without hidden whitespace to prevent markdown parser bugs
                     html_predraft += f'<div class="manager-col" style="min-width: 180px; flex: 0 1 220px; padding: 16px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--secondary-background-color);">'
                     html_predraft += f'<div class="manager-header" style="border-color: transparent; background-color: transparent; padding: 0;">'
                     html_predraft += f'<div class="manager-title-wrap" style="font-size: 1.2rem;">{mgr_name}</div>'
@@ -434,6 +432,22 @@ else:
                     
                 html_predraft += '</div>'
                 st.markdown(html_predraft, unsafe_allow_html=True)
+                
+                # Input for persisting Champions on the pre-draft screen
+                st.markdown("<h4 style='text-align: center; margin-top: 2rem; margin-bottom: 0.5rem;'>⭐ Defending Champions</h4>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center; opacity: 0.8; font-size: 0.9rem;'>Enter Manager or Team names (comma-separated) to award a gold star on the live board.</p>", unsafe_allow_html=True)
+                
+                col_c1, col_c2, col_c3 = st.columns([1, 2, 1])
+                with col_c2:
+                    champ_val = ",".join(st.session_state.prev_champs_list)
+                    prev_champs_input = st.text_input(
+                        "Champions",
+                        value=champ_val,
+                        placeholder="e.g. John Doe, FC Awesome",
+                        label_visibility="collapsed",
+                        key="champ_input"
+                    )
+                    st.session_state.prev_champs_list = [name.strip().lower() for name in prev_champs_input.split(",") if name.strip()]
             
             return
 
@@ -639,6 +653,8 @@ else:
             html_out = '<div class="draft-board-wrapper">'
             html_out += '<div class="draft-container">'
             
+            prev_champs_list = st.session_state.get("prev_champs_list", [])
+            
             for m in manager_order:
                 is_curr_picker = (m == curr_picking_mgr_entry)
                 is_next_picker = (m == next_picking_mgr_entry)
@@ -654,7 +670,6 @@ else:
                 
                 mgr_name_display = manager_names.get(m, "Unknown")
                 
-                # Count instances in the list to allow multiple stars
                 star_count = prev_champs_list.count(m.lower()) + prev_champs_list.count(mgr_name_display.lower())
                 champ_star = " ⭐" * star_count if star_count > 0 else ""
                 

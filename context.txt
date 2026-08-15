@@ -9,7 +9,7 @@
 - Framework: Streamlit (configured with wide layout and collapsed sidebar).
 - Core Dependencies: streamlit, pandas, requests, time, datetime.
 - Architecture Pattern: 
-  - Multi-state routing: Uses session state to toggle between a landing page and the active draft board.
+  - Multi-state routing: Uses session state to toggle between a landing page and the active draft board. Incorporates `st.query_params` to automatically read and write the `league` ID directly in the URL for seamless sharing.
   - Auto-refreshing fragments: Uses Streamlit fragments (`@st.fragment`) with dynamic auto-refresh intervals configured via sidebar slider (3 to 30 seconds). Auto-refresh is intelligently disabled during future pre-draft states to conserve API requests.
   - Replay Loop: Utilises session state and controlled `st.rerun()` calls to manage auto-play loops without breaking Streamlit's widget rendering constraints.
   - Caching: Caches foundational league details, player metadata, and player prices using `@st.cache_data` (TTL = 3600s).
@@ -17,11 +17,11 @@
 
 ## 3. Core Features & Functionality
 - Landing Page & Validation: Prompts users for a League ID (blank by default for easy manual entry) with error handling for invalid (404) leagues.
-- Pre-Draft Waiting Room: Detects if a draft has not yet started and displays a clean, static CSS flexbox grid of participating teams and managers, alongside the scheduled draft date and time.
+- Pre-Draft Waiting Room: Detects if a draft has not yet started and displays a clean, static CSS flexbox grid of participating teams and managers, alongside the scheduled draft date. Removing live countdown functionality maintains alignment stability.
+- Past Champions Integration: The pre-draft screen provides a text input to record comma-separated manager/team names. This list commits to session state, persisting into the live and post-draft views to display a gold star (⭐) next to past winners.
 - Live Tracking: Queries the official FPL Draft API (`/api/draft/{league_id}/choices`) to monitor pick progress, displaying progress bars, pick counts, and synchronisation times.
 - Draft Replay & Auto-Play: A sidebar slider allows users to rewind and review picks. Includes Play, Pause, and Stop media controls to simulate a live draft broadcast with 0.8s intervals.
 - Manager Columns: Side-by-side columns ordered chronologically by each manager's first draft pick.
-- Past Champions Integration: A sidebar text input allows users to input comma-separated manager/team names to display a gold star (⭐) next to past winners.
 - Positional Grouping & Colour Coding: Cards are grouped into Goalkeepers (2), Defenders (5), Midfielders (5), and Forwards (3) with distinct positional left-border colour accents (Yellow, Blue, Green, Red). A toggle allows switching to a chronological Pick Order view.
 - Round 1 Highlighting: Every manager's first-round selection features a subtle gold border and background highlight (`.card-round-1`).
 - Post-Draft Analytics (Revealed dynamically when viewing the final pick):
