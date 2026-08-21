@@ -44,18 +44,15 @@ if "league" in st.query_params and st.session_state.active_league_id is None:
 
 # --- CUSTOM CSS FOR BROADCAST UI WITH RESPONSIVE TEXT SCALING ---
 st.markdown("""
-<comment-tag id="1">    <style>
-    .block-container {
-        padding-top: 3rem !important; </comment-tag id="1" text="To instantly give the app a premium, broadcast-quality feel, consider importing a modern sans-serif font like 'Inter' or 'Roboto' from Google Fonts and applying it globally.
-
-Example:
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap');
     
     html, body, [class*='css'] {
         font-family: 'Inter', sans-serif !important;
     }
-    .block-container {" type="suggestion">
+    
+    .block-container {
+        padding-top: 3rem !important; 
         padding-bottom: 2rem !important;
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
@@ -74,14 +71,6 @@ Example:
         overflow-x: auto;
         padding-bottom: 8px;
     }
-<comment-tag id="2">    .manager-col {
-        flex: 1 1 0; display: flex; flex-direction: column; 
-        min-width: 110px;
-        background-color: var(--secondary-background-color);
-        border: 1px solid var(--border-color); border-radius: 4px; padding: 4px; overflow: hidden;
-    }</comment-tag id="2" text="To make the manager columns look more like floating glass or premium cards, try increasing the border-radius and adding a subtle drop shadow to separate them from the background.
-
-Example:
     .manager-col {
         flex: 1 1 0; display: flex; flex-direction: column; 
         min-width: 110px;
@@ -91,7 +80,7 @@ Example:
         padding: 6px; /* Slightly more breathing room */
         overflow: hidden;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    }" type="suggestion">
+    }
     
     /* PICKER STATUS ABOVE FRAME */
     .picker-status-container {
@@ -102,16 +91,6 @@ Example:
         align-items: center;
         justify-content: center;
     }
-<comment-tag id="3">    .picker-status {
-        font-size: clamp(0.5rem, 0.65vw, 0.75rem);
-        font-weight: 800;
-        white-space: nowrap;
-        letter-spacing: 0.5px;
-    }
-    .status-now { color: #22c55e; }
-    .status-next { color: #eab308; }</comment-tag id="3" text="Instead of just colored text, converting these statuses into modern 'pill' badges with background colors will make them much easier to read and give them a professional UI look.
-
-Example:
     .picker-status {
         font-size: clamp(0.5rem, 0.6vw, 0.7rem);
         font-weight: 700;
@@ -121,7 +100,7 @@ Example:
         border-radius: 12px;
     }
     .status-now { color: #fff; background-color: #22c55e; }
-    .status-next { color: #000; background-color: #eab308; }" type="suggestion">
+    .status-next { color: #000; background-color: #eab308; }
     
     /* MANAGER HEADER (THE FRAME) */
     .manager-header {
@@ -133,13 +112,7 @@ Example:
         box-sizing: border-box;
         transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
     }
-<comment-tag id="4">    .header-picking-now {
-        border-color: #22c55e !important;
-        background-color: rgba(34, 197, 94, 0.08);
-        box-shadow: 0 0 8px rgba(34, 197, 94, 0.35) !important;
-    }</comment-tag id="4" text="To really emphasize who is currently picking (the 'live' broadcast feel), add a gentle pulsing animation to this header. This naturally draws the eye to the active column.
-
-Example:
+    
     @keyframes pulse-green {
         0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
         70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
@@ -150,7 +123,8 @@ Example:
         border-color: #22c55e !important;
         background-color: rgba(34, 197, 94, 0.1);
         animation: pulse-green 2s infinite;
-    }" type="suggestion">
+    }
+    
     .header-picking-next {
         border-color: #eab308 !important;
         background-color: rgba(234, 179, 8, 0.05);
@@ -215,13 +189,6 @@ Example:
     }
 
     /* LAST PICK HIGHLIGHT */
-<comment-tag id="5">    .card-last-picked {
-        border-color: #3b82f6 !important;
-        background-color: rgba(59, 130, 246, 0.18) !important;
-        box-shadow: 0 0 6px rgba(59, 130, 246, 0.5) !important;
-    }</comment-tag id="5" text="Since this application features a replay mode, adding a 'pop' keyframe animation to the newest card will make it incredibly satisfying to watch picks fill in sequentially, adding a sense of physical weight to the action.
-
-Example:
     @keyframes pop-in {
         0% { transform: scale(0.9); opacity: 0.5; }
         50% { transform: scale(1.05); opacity: 1; }
@@ -233,7 +200,7 @@ Example:
         background-color: rgba(59, 130, 246, 0.18) !important;
         box-shadow: 0 0 8px rgba(59, 130, 246, 0.6) !important;
         animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-    }" type="suggestion">
+    }
 
     /* POSITIONAL COLOUR CODING BARS */
     .card-gk::before, .card-def::before, .card-mid::before, .card-fwd::before {
